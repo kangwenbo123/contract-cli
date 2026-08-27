@@ -11,6 +11,7 @@
 - `app` 目前已经支持登录、状态查看、登出、默认身份切换
 - 推荐使用 `npx skills add qfeius/contract-cli -y -g` 安装跨 Agent 平台 skills；`contract-cli skills install` 保留为 CLI 内置兜底
 - `update check` 支持手动检查 npm 远端版本；默认输出文本，带 `--json` 时返回飞书式 JSON；CLI 会为符合条件的普通命令按 24 小时缓存检查远端版本，并在 JSON object 输出中注入 `_notice.update`
+- `environment inspect` 可以在本地查看当前父进程链对应的客户端来源；所有实际业务 HTTP 请求都会在发送前重新探测并覆盖来源 Header
 - 当前全部已支持命令都可以通过 `--help` 查看本地帮助，例如 `contract-cli --help`、`contract-cli contract search --help`、`contract-cli help contract upload-file`
 - `app` 业务接口后续继续新增时，优先在本文件补充命令矩阵
 
@@ -43,6 +44,7 @@ contract-cli contract get <contract-id> --help
 - `config` 和 `version` 不需要登录态
 - `skills list/install` 不需要登录态；通用 `npx skills add qfeius/contract-cli -y -g` 也不依赖 contract-cli 登录态
 - `update check` 不需要登录态
+- `environment inspect` 不需要登录态，也不发起 HTTP 请求
 - `auth login --as user` 走 OAuth 用户授权
 - `auth login --as app` 走 `appId + appSecret -> tenant_access_token/internal`
 - 为兼容老用户脚本，旧身份值 `--as bot` 仍可使用，运行时等价于 `--as app`；新文档和示例统一使用 `app`
@@ -197,6 +199,35 @@ contract-cli update check --channel latest --json
 - `--raw`、yaml、table、纯文本命令不注入 `_notice.update`
 - CI 环境会跳过自动远端检查
 - 设置 `CONTRACT_CLI_NO_UPDATE_CHECK=1` 可以关闭自动检查
+
+#### `contract-cli environment inspect`
+
+用途：在本地检查当前 CLI 是由 Doubao、WorkBuddy、Codex 还是未知环境调用。
+
+命令：
+
+```bash
+contract-cli environment inspect
+contract-cli environment inspect --output json
+contract-cli environment inspect --output json --include-processes
+```
+
+支持参数：
+
+- `--depth`：父进程最大回溯深度，范围 `1-128`，默认 `32`
+- `--output`：`text` 或 `json`，默认 `text`
+- `--include-processes`：在本地诊断结果中包含采集到的 PID、PPID、进程名和可执行文件路径；不读取或输出完整命令行参数
+
+业务请求行为：
+
+- 每一次实际业务 HTTP 请求发送前都会重新探测，包括 OpenPlatform Client 的请求重试和 Token 刷新后的业务请求重放
+- 识别结果只作用于本次请求，不写入 profile、OAuth Token 或其他持久化配置
+- macOS 校验代码签名并匹配 Bundle ID + Team ID
+- Windows 优先匹配 Package Family Name；非商店桌面程序通过系统 WinVerifyTrust 校验 Authenticode，并匹配证书 SHA-256 + 可执行文件路径
+- Linux 当前按可执行文件路径或进程名降级识别
+- 已发现 macOS/Windows 平台身份但身份不匹配时返回 `unknown`，不再降级为路径或进程名命中
+- 业务请求只透传 `X-Qfei-Request-Source-Type`、`X-Qfei-Channel-Type`、`X-Qfei-Evidence-Type`、`X-Qfei-Channel-Confidence`、`X-Qfei-Detector-Version` 和 `X-Qfei-Rule-Id`
+- 业务 Header 不包含 PID、进程路径、完整命令行或用户目录信息
 
 #### `contract-cli skills list`
 

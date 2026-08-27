@@ -200,6 +200,7 @@ func helpRegistry() map[string]helpTopic {
 		{"contract-cli skills list", "列出内置 Agent skills"},
 		{"contract-cli skills install [flags]", "安装内置 Agent skills"},
 		{"contract-cli update check [flags]", "检查 npm 远端版本"},
+		{"contract-cli environment inspect [flags]", "探测当前 CLI 的宿主客户端环境"},
 		{"contract-cli contract <subcommand> [flags]", "合同结构化命令"},
 		{"contract-cli payment <subcommand> [flags]", "付款结构化命令"},
 		{"contract-cli mdm vendor <subcommand> [flags]", "交易方主数据命令"},
@@ -241,12 +242,43 @@ func helpRegistry() map[string]helpTopic {
 	addAuthHelp(registry)
 	addSkillsHelp(registry)
 	addUpdateHelp(registry)
+	addEnvironmentHelp(registry)
 	addContractHelp(registry)
 	addPaymentHelp(registry)
 	addMDMHelp(registry)
 	addEventHelp(registry)
 	addRuleHelp(registry)
 	return registry
+}
+
+func addEnvironmentHelp(registry map[string]helpTopic) {
+	registry["environment"] = helpTopic{
+		Name:  "environment",
+		Usage: []string{"contract-cli environment <subcommand> [flags]"},
+		Commands: []helpCommand{
+			{"contract-cli environment inspect [flags]", "探测祖先进程与宿主客户端身份"},
+		},
+	}
+	registry["environment inspect"] = helpTopic{
+		Name:    "environment inspect",
+		Summary: "沿祖先进程链识别豆包、WorkBuddy、Codex 或 unknown；不读取完整命令行。",
+		Usage:   []string{"contract-cli environment inspect [flags]"},
+		Flags: []helpFlag{
+			{"--depth <1-128>", "祖先进程最大回溯深度，默认 32"},
+			{"--output <text|json>", "输出格式，默认 text"},
+			{"--include-processes", "输出采集到的进程链；不包含命令行参数"},
+		},
+		Examples: []string{
+			"contract-cli environment inspect",
+			"contract-cli environment inspect --output json --include-processes",
+		},
+		Notes: []string{
+			"macOS 会校验应用代码签名并匹配 Bundle ID + Team ID。",
+			"Windows 优先匹配 Package Family Name；普通桌面程序校验 Authenticode 证书指纹与路径。",
+			"Linux 当前使用可执行文件路径或进程名作为降级证据。",
+			"每次实际业务 HTTP 请求发送前都会重新探测；结果不写入 profile 或 OAuth Token。",
+		},
+	}
 }
 
 func addConfigHelp(registry map[string]helpTopic) {

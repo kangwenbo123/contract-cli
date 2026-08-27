@@ -24,15 +24,19 @@ type AuthProvider interface {
 type ProfileAuthProvider struct{}
 
 type Options struct {
-	HTTPClient   *http.Client
-	Logger       *slog.Logger
-	AuthProvider AuthProvider
+	HTTPClient         *http.Client
+	Logger             *slog.Logger
+	AuthProvider       AuthProvider
+	BeforeRequestHooks []BeforeRequestHook
 }
 
+type BeforeRequestHook func(context.Context, *http.Request) error
+
 type Client struct {
-	httpClient   *http.Client
-	logger       *slog.Logger
-	authProvider AuthProvider
+	httpClient         *http.Client
+	logger             *slog.Logger
+	authProvider       AuthProvider
+	beforeRequestHooks []BeforeRequestHook
 }
 
 type RequestContext struct {
@@ -112,9 +116,10 @@ func New(options Options) *Client {
 	}
 
 	return &Client{
-		httpClient:   httpClient,
-		logger:       logger,
-		authProvider: authProvider,
+		httpClient:         httpClient,
+		logger:             logger,
+		authProvider:       authProvider,
+		beforeRequestHooks: append([]BeforeRequestHook(nil), options.BeforeRequestHooks...),
 	}
 }
 
@@ -234,6 +239,9 @@ func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers htt
 		return Response{}, fmt.Errorf("build open platform request: %w", err)
 	}
 	httpRequest.Header = headers.Clone()
+	if err := c.runBeforeRequestHooks(ctx, httpRequest); err != nil {
+		return Response{}, err
+	}
 
 	resp, err := c.httpClient.Do(httpRequest)
 	if err != nil {
@@ -318,7 +326,10 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 		c.logger.Error("build open platform stream request failed", "method", method, "path", request.Path, "error", err.Error())
 		return Response{}, fmt.Errorf("build open platform request: %w", err)
 	}
-	httpRequest.Header = headers
+	httpRequest.Header = headers.Clone()
+	if err := c.runBeforeRequestHooks(ctx, httpRequest); err != nil {
+		return Response{}, err
+	}
 
 	resp, err := c.httpClient.Do(httpRequest)
 	if err != nil {
@@ -350,6 +361,18 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 
 	c.logger.Info("open platform stream request completed", "method", method, "path", request.Path, "status_code", resp.StatusCode)
 	return response, nil
+}
+
+func (c *Client) runBeforeRequestHooks(ctx context.Context, request *http.Request) error {
+	for index, hook := range c.beforeRequestHooks {
+		if hook == nil {
+			continue
+		}
+		if err := hook(ctx, request); err != nil {
+			return fmt.Errorf("run open platform before-request hook %d: %w", index, err)
+		}
+	}
+	return nil
 }
 
 func (ProfileAuthProvider) Resolve(profile config.Profile, identity config.IdentityKind) (RequestContext, error) {

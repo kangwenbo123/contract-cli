@@ -9,6 +9,7 @@
 - 验证 app 身份下当前已接入的全部结构化业务命令。
 - 验证 user 身份下当前已接入的全部结构化业务命令。
 - 验证输出格式、通用 Agent skills 安装、CLI 内置 skills 兜底安装、`api call` 暂未开放拦截等补充能力。
+- 验证每次实际业务 HTTP 请求发送前都会重新探测调用环境，并正确区分 Doubao、WorkBuddy、Codex 或 `unknown`。
 
 ## 2. 测试环境准备
 
@@ -1614,3 +1615,94 @@ contract-cli payment get "$PAYMENT_ID" --contract "$CONTRACT_ID" --profile "$PRO
 - POST/PATCH 缺少 `--input-file` / `--data` 时报错，且不发送 HTTP。
 - GET/list 命令传入 `--input-file` / `--data` 时报错，且不发送 HTTP。
 - 显式 `--as user` 调用这些 app-only 命令时报 `only supports --as app`，且不发送 HTTP。
+
+## 17. 调用环境识别专项测试
+
+本模块不要求先向 npm 发布版本。可以直接验证本地二进制，也可以生成带本地 release assets 的 tgz 并安装到隔离目录。
+
+### 17.1 本地二进制
+
+```bash
+mkdir -p dist/local-test
+go build -trimpath -o dist/local-test/contract-cli ./cmd/contract-cli
+./dist/local-test/contract-cli environment inspect --output json
+./dist/local-test/contract-cli environment inspect --output json --include-processes
+```
+
+在普通终端直接执行时通常应得到 `channel_type=unknown`。这不是失败，因为父进程链里只有 Terminal、Shell 等进程。
+
+### 17.2 从真实客户端调用
+
+分别让 Doubao 和 WorkBuddy 直接执行测试二进制的绝对路径：
+
+```text
+<仓库绝对路径>/dist/local-test/contract-cli environment inspect --output json --include-processes
+```
+
+预期结果：
+
+- Doubao 调用返回 `channel_type=doubao`。
+- WorkBuddy 调用返回 `channel_type=workbuddy`。
+- macOS 官方签名匹配时返回 `evidence_type=macos_code_signature`、`confidence=high`。
+- Windows 商店包身份匹配时返回 `evidence_type=windows_package_identity`、`confidence=high`。
+- Windows 普通桌面程序通过 WinVerifyTrust 且证书指纹与路径均匹配时，返回 `evidence_type=windows_authenticode`、`confidence=high`。
+- 两个客户端交替执行时，每个新 CLI 进程都按自己的父进程链判断，不读取上一次结果。
+
+如果客户端只是要求用户复制命令到外部 Terminal 执行，父进程将是 Terminal，而不是该客户端；这类方式不能作为真实客户端调用测试。
+
+### 17.3 真实业务请求 Hook
+
+使用已经授权的 profile，从 Doubao 和 WorkBuddy 分别调用同一条只读业务命令，并在 Higress/OpenPlatform 接收端检查：
+
+```text
+X-Qfei-Request-Source-Type: cli
+X-Qfei-Channel-Type: doubao | workbuddy | codex | unknown
+X-Qfei-Evidence-Type: ...
+X-Qfei-Channel-Confidence: ...
+X-Qfei-Detector-Version: process-ancestry-v2
+X-Qfei-Rule-Id: ...
+```
+
+检查点：
+
+- 每个实际 HTTP attempt 前探测函数调用一次。
+- 请求重试或 Token 刷新后的业务请求重放会再次探测。
+- 调用环境没有写入 profile、OAuth Token 或其他持久化配置。
+- Header 不包含 PID、进程路径或完整命令行。
+
+### 17.4 不发布 npm 的本地安装包
+
+```bash
+make release-assets
+mkdir -p dist/local-test
+npm pack --pack-destination dist/local-test
+npm install -g "$(pwd)/dist/local-test/qfeius-contract-cli-1.8.3.tgz" \
+  --prefix "$(pwd)/dist/local-prefix"
+"$(pwd)/dist/local-prefix/bin/contract-cli" --version
+"$(pwd)/dist/local-prefix/bin/contract-cli" environment inspect --output json
+```
+
+该方式安装的是当前工作区编译出的本地二进制，不访问或发布新的 npm 版本，也不会覆盖系统全局安装。真实客户端验证时使用 `dist/local-prefix/bin/contract-cli` 的绝对路径。
+
+### 17.5 Windows 真机/虚拟机验证
+
+在 Windows PowerShell 中拉取本分支后构建：
+
+```powershell
+go build -trimpath -o dist/local-test/contract-cli.exe ./cmd/contract-cli
+& (Resolve-Path ./dist/local-test/contract-cli.exe) environment inspect --output json --include-processes
+```
+
+先在普通 PowerShell 运行一次，通常应为 `channel_type=unknown`。然后分别让 Doubao、WorkBuddy 或 Codex 直接调用同一个 `contract-cli.exe` 绝对路径。诊断重点：
+
+- `matched_process` 应落在真实客户端祖先进程，而不是 PowerShell、cmd 或 Terminal。
+- Codex 商店包应输出 `application.package_family_name=OpenAI.Codex_2p2nqsd0c76g0`。
+- Doubao/WorkBuddy 应输出 `application.signature_valid=true`、非空 `publisher` 与 `certificate_sha256`。
+- 如出现 `windows_authenticode_mismatch`，保留完整 JSON 并用以下命令核对实际父进程文件；客户端换证书后必须更新登记指纹。
+
+```powershell
+Get-AuthenticodeSignature "<matched_process.executable>" | Format-List Status,StatusMessage,SignerCertificate
+(Get-Item "<matched_process.executable>").VersionInfo | Format-List CompanyName,ProductName,FileVersion,OriginalFilename
+```
+
+最后从真实客户端执行一条已授权的只读业务命令，在 Higress/OpenPlatform 接收端核对 17.3 的六个 Header；只运行 `environment inspect` 不能证明业务 Hook 已透传。

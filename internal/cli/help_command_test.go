@@ -262,6 +262,17 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			},
 		},
 		{
+			name: "environment inspect explains per request detection",
+			args: []string{"environment", "inspect", "--help"},
+			contains: []string{
+				"environment inspect",
+				"--depth <1-128>",
+				"--include-processes",
+				"每次实际业务 HTTP 请求发送前都会重新探测",
+				"不写入 profile 或 OAuth Token",
+			},
+		},
+		{
 			name: "skills install flags",
 			args: []string{"skills", "install", "--help"},
 			contains: []string{
@@ -358,6 +369,8 @@ func TestAllCurrentHelpTopicsRender(t *testing.T) {
 		"skills install",
 		"update",
 		"update check",
+		"environment",
+		"environment inspect",
 		"contract",
 		"contract search",
 		"contract search-v2",

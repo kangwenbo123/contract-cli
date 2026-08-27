@@ -22,6 +22,7 @@
 | Category | Capabilities |
 | --- | --- |
 | 配置与版本 | 初始化 profile、查看版本、检查 npm 远端版本、自动注入 `_notice.update` |
+| 调用环境识别 | 每次实际业务 HTTP 请求发送前重新识别 Doubao、WorkBuddy、Codex 或 `unknown`，并通过请求 Header 透传 |
 | 鉴权 | `user` OAuth 登录、`appId/appSecret` 应用登录、状态查看、登出、默认身份切换 |
 | 合同 | 搜索、详情、创建、提交、重提、更新、删除、文本读取、用户组同步 |
 | 合同文件 | 正文/附件上传、文件下载、打印文件生成 |
@@ -281,6 +282,40 @@ contract-cli mdm fields list --profile contract --as app --biz-line legal_entity
 ```
 
 ## Advanced Usage
+
+### Runtime Environment Detection
+
+本地查看当前调用链的识别结果：
+
+```bash
+contract-cli environment inspect
+contract-cli environment inspect --output json
+contract-cli environment inspect --output json --include-processes
+```
+
+CLI 会在每一次实际业务 HTTP 请求发送前重新回溯当前父进程链，不把识别结果写入 profile、OAuth Token 或其他持久化配置。即使同一台机器同时安装 Doubao 和 WorkBuddy，每次独立调用也按当时真实的父进程链重新判断；网络重试或 Token 刷新后的业务请求重放同样会再次执行探测。
+
+当前证据等级：
+
+- macOS：校验应用代码签名，并同时匹配 Bundle ID 与 Team ID，命中时为 `high`。
+- Windows：优先读取 Package Family Name；普通桌面程序使用系统 `WinVerifyTrust` 校验 Authenticode，再同时匹配已登记的签名证书 SHA-256 与安装路径，命中时为 `high`。
+- Linux：按祖先进程可执行文件路径或进程名降级识别，分别为 `medium` / `low`。
+- 无规则命中或签名与已登记身份不一致时返回 `unknown`，不会仅凭疑似路径冒充高可信结果。
+
+当前 Windows 身份登记来自公开发行渠道：Codex 使用 Microsoft Store 的 Package Family Name；Doubao 与 WorkBuddy 使用各自官方 Windows 安装包中的 Authenticode 叶证书指纹。客户端换证书后会返回 `unknown`，需要先在真实 Windows 环境核验新证书再更新规则，不会自动信任同名进程。
+
+每次业务请求会覆盖以下 Header：
+
+```text
+X-Qfei-Request-Source-Type
+X-Qfei-Channel-Type
+X-Qfei-Evidence-Type
+X-Qfei-Channel-Confidence
+X-Qfei-Detector-Version
+X-Qfei-Rule-Id
+```
+
+业务 Header 只包含归一化后的来源和证据字段，不包含 PID、完整进程路径或命令行参数。`environment inspect --include-processes` 仅用于用户主动执行的本地诊断。
 
 ### Output Formats
 

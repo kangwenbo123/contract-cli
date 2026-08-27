@@ -17,6 +17,7 @@ import (
 	"cn.qfei/contract-cli/internal/build"
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/credential"
+	"cn.qfei/contract-cli/internal/invocation"
 	"cn.qfei/contract-cli/internal/oauth"
 	contractskills "cn.qfei/contract-cli/skills"
 )
@@ -26,17 +27,18 @@ const defaultProfileName = "contract"
 var errAPICommandUnavailable = errors.New("api call 暂未开放使用，请使用已开放的结构化命令")
 
 type Options struct {
-	Stdout          io.Writer
-	Stderr          io.Writer
-	Logger          *slog.Logger
-	Store           *config.Store
-	Secrets         *config.SecretsStore
-	HTTPClient      *http.Client
-	OpenBrowser     func(string) error
-	SaveFileDialog  func(context.Context, string) (string, error)
-	LookupEnv       func(string) (string, bool)
-	SkillsFS        fs.FS
-	CredentialStore credential.Store
+	Stdout             io.Writer
+	Stderr             io.Writer
+	Logger             *slog.Logger
+	Store              *config.Store
+	Secrets            *config.SecretsStore
+	HTTPClient         *http.Client
+	OpenBrowser        func(string) error
+	SaveFileDialog     func(context.Context, string) (string, error)
+	LookupEnv          func(string) (string, bool)
+	SkillsFS           fs.FS
+	CredentialStore    credential.Store
+	InspectEnvironment func(int) invocation.Result
 
 	UpdateRegistryURL    string
 	UpdateCurrentVersion string
@@ -44,23 +46,24 @@ type Options struct {
 }
 
 type App struct {
-	stdout          io.Writer
-	stderr          io.Writer
-	logger          *slog.Logger
-	store           *config.Store
-	secrets         *config.SecretsStore
-	httpClient      *http.Client
-	openBrowser     func(string) error
-	saveFileDialog  func(context.Context, string) (string, error)
-	lookupEnv       func(string) (string, bool)
-	skillsFS        fs.FS
-	credentialStore credential.Store
-	updateURL       string
-	updateVersion   string
-	updateNotice    map[string]any
-	now             func() time.Time
-	userProvider    authProvider
-	appProvider     authProvider
+	stdout             io.Writer
+	stderr             io.Writer
+	logger             *slog.Logger
+	store              *config.Store
+	secrets            *config.SecretsStore
+	httpClient         *http.Client
+	openBrowser        func(string) error
+	saveFileDialog     func(context.Context, string) (string, error)
+	lookupEnv          func(string) (string, bool)
+	skillsFS           fs.FS
+	credentialStore    credential.Store
+	inspectEnvironment func(int) invocation.Result
+	updateURL          string
+	updateVersion      string
+	updateNotice       map[string]any
+	now                func() time.Time
+	userProvider       authProvider
+	appProvider        authProvider
 }
 
 type environmentPreset struct {
@@ -133,22 +136,27 @@ func New(options Options) *App {
 	if now == nil {
 		now = time.Now
 	}
+	inspectEnvironment := options.InspectEnvironment
+	if inspectEnvironment == nil {
+		inspectEnvironment = invocation.Inspect
+	}
 
 	app := &App{
-		stdout:          stdout,
-		stderr:          stderr,
-		logger:          logger,
-		store:           store,
-		secrets:         secrets,
-		httpClient:      httpClient,
-		openBrowser:     opener,
-		saveFileDialog:  saveFileDialog,
-		lookupEnv:       lookupEnv,
-		skillsFS:        skillsFS,
-		credentialStore: options.CredentialStore,
-		updateURL:       options.UpdateRegistryURL,
-		updateVersion:   options.UpdateCurrentVersion,
-		now:             now,
+		stdout:             stdout,
+		stderr:             stderr,
+		logger:             logger,
+		store:              store,
+		secrets:            secrets,
+		httpClient:         httpClient,
+		openBrowser:        opener,
+		saveFileDialog:     saveFileDialog,
+		lookupEnv:          lookupEnv,
+		skillsFS:           skillsFS,
+		credentialStore:    options.CredentialStore,
+		inspectEnvironment: inspectEnvironment,
+		updateURL:          options.UpdateRegistryURL,
+		updateVersion:      options.UpdateCurrentVersion,
+		now:                now,
 	}
 	app.userProvider = userAuthProvider{
 		httpClient:             httpClient,
@@ -205,6 +213,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.runSkills(ctx, args[1:])
 	case "update":
 		return a.runUpdate(ctx, args[1:])
+	case "environment":
+		return a.runEnvironment(args[1:])
 	case "api":
 		return a.runAPI(ctx, args[1:])
 	case "contract":

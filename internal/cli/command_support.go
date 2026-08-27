@@ -211,6 +211,9 @@ func (a *App) openPlatformClientAndContext(profileName, identityArg, path string
 	client := openplatform.New(openplatform.Options{
 		HTTPClient: a.httpClient,
 		Logger:     a.logger,
+		BeforeRequestHooks: []openplatform.BeforeRequestHook{
+			a.beforeOpenPlatformRequest,
+		},
 	})
 	var requestContext openplatform.RequestContext
 	if identity == config.IdentityUser && profile.Identities.User.AuthMode == config.UserAuthModeDevice {

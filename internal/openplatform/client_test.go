@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -71,6 +72,100 @@ func TestClientDoAddsAuthorizationAndQuery(t *testing.T) {
 	}
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", response.StatusCode)
+	}
+}
+
+func TestClientDoRunsBeforeRequestHookForEveryAttempt(t *testing.T) {
+	t.Parallel()
+
+	hookCalls := 0
+	channels := []string{"doubao", "workbuddy"}
+	receivedChannels := make([]string, 0, len(channels))
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				receivedChannels = append(receivedChannels, req.Header.Get("X-Qfei-Channel-Type"))
+				return jsonResponse(`{"code":0}`), nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		BeforeRequestHooks: []openplatform.BeforeRequestHook{
+			func(_ context.Context, req *http.Request) error {
+				req.Header.Set("X-Qfei-Channel-Type", channels[hookCalls])
+				hookCalls++
+				return nil
+			},
+		},
+	})
+	requestContext := openplatform.RequestContext{
+		Identity:    config.IdentityUser,
+		BaseURL:     "https://open.qtech.cn",
+		AccessToken: "user-token",
+	}
+
+	for range channels {
+		if _, err := client.Do(context.Background(), requestContext, openplatform.Request{
+			Method: http.MethodGet,
+			Path:   "/open-apis/contract/v1/mcp/contracts/search",
+		}); err != nil {
+			t.Fatalf("Do() error = %v", err)
+		}
+	}
+
+	if hookCalls != 2 {
+		t.Fatalf("hook calls = %d, want 2", hookCalls)
+	}
+	if len(receivedChannels) != 2 || receivedChannels[0] != "doubao" || receivedChannels[1] != "workbuddy" {
+		t.Fatalf("received channels = %#v", receivedChannels)
+	}
+}
+
+func TestClientDoStreamRunsBeforeRequestHook(t *testing.T) {
+	t.Parallel()
+
+	hookCalls := 0
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if got := req.Header.Get("X-Qfei-Channel-Type"); got != "doubao" {
+					t.Fatalf("channel header = %q, want doubao", got)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader("stream body")),
+					Request:    req,
+				}, nil
+			}),
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		BeforeRequestHooks: []openplatform.BeforeRequestHook{
+			func(_ context.Context, req *http.Request) error {
+				hookCalls++
+				req.Header.Set("X-Qfei-Channel-Type", "doubao")
+				return nil
+			},
+		},
+	})
+	requestContext := openplatform.RequestContext{
+		Identity:    config.IdentityApp,
+		BaseURL:     "https://open.qtech.cn",
+		AccessToken: "app-token",
+	}
+
+	var output bytes.Buffer
+	if _, err := client.DoStream(context.Background(), requestContext, openplatform.Request{
+		Method:         http.MethodGet,
+		Path:           "/open-apis/contract/v1/files/file-1/download",
+		IdentityPolicy: openplatform.IdentityPolicyAppOnly,
+	}, &output); err != nil {
+		t.Fatalf("DoStream() error = %v", err)
+	}
+	if hookCalls != 1 {
+		t.Fatalf("hook calls = %d, want 1", hookCalls)
+	}
+	if output.String() != "stream body" {
+		t.Fatalf("stream output = %q", output.String())
 	}
 }
 
@@ -569,19 +664,29 @@ func TestRequestContextRequiresConfiguredBaseURLAndToken(t *testing.T) {
 }
 
 func TestClientDoRetriesClassifiedReadNetworkErrorOnce(t *testing.T) {
-	calls := 0
-	client := openplatform.New(openplatform.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		if calls == 1 {
-			return nil, temporaryNetworkError{}
-		}
-		return responseWithStatus(http.StatusOK, `{}`), nil
-	})}})
+	calls, hookCalls := 0, 0
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			if req.Header.Get("X-Attempt") != fmt.Sprintf("%d", calls) {
+				t.Fatalf("attempt header = %q, want %d", req.Header.Get("X-Attempt"), calls)
+			}
+			if calls == 1 {
+				return nil, temporaryNetworkError{}
+			}
+			return responseWithStatus(http.StatusOK, `{}`), nil
+		})},
+		BeforeRequestHooks: []openplatform.BeforeRequestHook{func(_ context.Context, req *http.Request) error {
+			hookCalls++
+			req.Header.Set("X-Attempt", fmt.Sprintf("%d", hookCalls))
+			return nil
+		}},
+	})
 	_, err := client.Do(context.Background(), openplatform.RequestContext{BaseURL: "https://example.test", AccessToken: "token", Identity: config.IdentityUser}, openplatform.Request{
 		Method: http.MethodPost, Path: "/open-apis/contract/v1/mcp/contracts/search", Body: []byte(`{}`), OperationKind: openplatform.OperationRead,
 	})
-	if err != nil || calls != 2 {
-		t.Fatalf("err=%v calls=%d", err, calls)
+	if err != nil || calls != 2 || hookCalls != 2 {
+		t.Fatalf("err=%v calls=%d hookCalls=%d", err, calls, hookCalls)
 	}
 }
 
@@ -634,17 +739,27 @@ func TestClientDoDoesNotRefreshOnGenericUnauthorized(t *testing.T) {
 }
 
 func TestClientDoRefreshesOnceOnExplicitTokenExpired(t *testing.T) {
-	calls, refreshCalls := 0, 0
-	client := openplatform.New(openplatform.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-		calls++
-		if calls == 1 {
-			return responseWithAuthenticationError(http.StatusUnauthorized, "token_expired", `{"code":401,"data":{"error_type":"token_expired"}}`), nil
-		}
-		if req.Header.Get("Authorization") != "Bearer refreshed" {
-			t.Fatalf("authorization = %q", req.Header.Get("Authorization"))
-		}
-		return responseWithStatus(http.StatusOK, `{}`), nil
-	})}})
+	calls, refreshCalls, hookCalls := 0, 0, 0
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			if req.Header.Get("X-Attempt") != fmt.Sprintf("%d", calls) {
+				t.Fatalf("attempt header = %q, want %d", req.Header.Get("X-Attempt"), calls)
+			}
+			if calls == 1 {
+				return responseWithAuthenticationError(http.StatusUnauthorized, "token_expired", `{"code":401,"data":{"error_type":"token_expired"}}`), nil
+			}
+			if req.Header.Get("Authorization") != "Bearer refreshed" {
+				t.Fatalf("authorization = %q", req.Header.Get("Authorization"))
+			}
+			return responseWithStatus(http.StatusOK, `{}`), nil
+		})},
+		BeforeRequestHooks: []openplatform.BeforeRequestHook{func(_ context.Context, req *http.Request) error {
+			hookCalls++
+			req.Header.Set("X-Attempt", fmt.Sprintf("%d", hookCalls))
+			return nil
+		}},
+	})
 	requestContext := openplatform.RequestContext{
 		BaseURL: "https://example.test", AccessToken: "expired", Identity: config.IdentityUser,
 		RefreshAccessToken: func(context.Context, string) (string, error) {
@@ -655,8 +770,8 @@ func TestClientDoRefreshesOnceOnExplicitTokenExpired(t *testing.T) {
 	_, err := client.Do(context.Background(), requestContext, openplatform.Request{
 		Method: http.MethodPost, Path: "/open-apis/contract/v1/mcp/contracts", Body: []byte(`{}`), OperationKind: openplatform.OperationWrite,
 	})
-	if err != nil || calls != 2 || refreshCalls != 1 {
-		t.Fatalf("err=%v calls=%d refreshCalls=%d", err, calls, refreshCalls)
+	if err != nil || calls != 2 || refreshCalls != 1 || hookCalls != 2 {
+		t.Fatalf("err=%v calls=%d refreshCalls=%d hookCalls=%d", err, calls, refreshCalls, hookCalls)
 	}
 }
 

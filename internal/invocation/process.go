@@ -1,0 +1,72 @@
+package invocation
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+	"strings"
+
+	"github.com/shirou/gopsutil/v4/process"
+)
+
+func Inspect(maxDepth int) Result {
+	chain, warnings := Ancestry(maxDepth)
+	identities, identityWarnings := platformApplicationIdentities(chain)
+	warnings = append(warnings, identityWarnings...)
+
+	result := Analyze(chain, identities)
+	result.Platform = runtime.GOOS
+	result.DetectorVersion = DetectorVersion
+	result.Processes = chain
+	result.Warnings = warnings
+	return result
+}
+
+func Ancestry(maxDepth int) ([]Process, []string) {
+	if maxDepth <= 0 {
+		maxDepth = DefaultMaxDepth
+	}
+	if maxDepth > 128 {
+		maxDepth = 128
+	}
+
+	chain := make([]Process, 0, maxDepth)
+	warnings := make([]string, 0)
+	seen := make(map[int32]struct{}, maxDepth)
+
+	for pid := int32(os.Getpid()); pid > 0 && len(chain) < maxDepth; {
+		if _, exists := seen[pid]; exists {
+			warnings = append(warnings, fmt.Sprintf("process ancestry loop detected at pid %d", pid))
+			break
+		}
+		seen[pid] = struct{}{}
+
+		current, err := process.NewProcess(pid)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("cannot inspect pid %d: %v", pid, err))
+			break
+		}
+
+		name, _ := current.Name()
+		executable, _ := current.Exe()
+		ppid, err := current.Ppid()
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("cannot read parent pid for pid %d: %v", pid, err))
+			ppid = 0
+		}
+
+		chain = append(chain, Process{
+			Depth:      len(chain),
+			PID:        pid,
+			PPID:       ppid,
+			Name:       strings.TrimSpace(name),
+			Executable: strings.TrimSpace(executable),
+		})
+		pid = ppid
+	}
+
+	if len(chain) == maxDepth && chain[len(chain)-1].PPID > 0 {
+		warnings = append(warnings, fmt.Sprintf("process ancestry truncated at depth %d", maxDepth))
+	}
+	return chain, warnings
+}

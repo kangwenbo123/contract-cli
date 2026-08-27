@@ -46,6 +46,7 @@ func TestRunWithoutArgsPrintsTopLevelHelp(t *testing.T) {
 		!strings.Contains(stdout.String(), "contract-cli skills list") ||
 		!strings.Contains(stdout.String(), "contract-cli skills install [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli update check [flags]") ||
+		!strings.Contains(stdout.String(), "contract-cli environment inspect [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm vendor <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm legal <subcommand> [flags]") ||
 		!strings.Contains(stdout.String(), "contract-cli mdm fields list [flags]") {

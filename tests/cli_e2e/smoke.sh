@@ -23,6 +23,12 @@ usage_output="$("$TMP_DIR/contract-cli")"
 [[ "$usage_output" == *"contract-cli config add"* ]]
 [[ "$usage_output" == *"contract-cli skills install"* ]]
 [[ "$usage_output" == *"contract-cli update check"* ]]
+[[ "$usage_output" == *"contract-cli environment inspect"* ]]
+
+environment_output="$("$TMP_DIR/contract-cli" environment inspect --output json)"
+[[ "$environment_output" == *'"request_source_type": "cli"'* ]]
+[[ "$environment_output" == *'"channel_type":'* ]]
+[[ "$environment_output" == *'"detector_version": "process-ancestry-v2"'* ]]
 
 skills_output="$("$TMP_DIR/contract-cli" skills list)"
 [[ "$skills_output" == *"contract-cli-contract"* ]]
