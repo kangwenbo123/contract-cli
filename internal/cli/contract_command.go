@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/openplatform"
 	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
 )
@@ -311,7 +312,7 @@ func (a *App) runContractPatch(ctx context.Context, args []string) error {
 }
 
 func (a *App) runContractDownloadFile(ctx context.Context, args []string) error {
-	parsed, err := parseArgs(args, structuredValueFlags("--output-file"), commonBoolFlags("--force"))
+	parsed, err := parseArgs(args, structuredValueFlags("--output-file", "--contract"), commonBoolFlags("--force"))
 	if err != nil {
 		return err
 	}
@@ -324,9 +325,16 @@ func (a *App) runContractDownloadFile(ctx context.Context, args []string) error 
 	}
 
 	fileID := parsed.positionals[0]
-	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractOpenAPIPathPrefix+"/files/"+fileID, openplatform.IdentityPolicyAppOnly)
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractOpenAPIPathPrefix+"/files/"+fileID, openplatform.IdentityPolicyAny)
 	if err != nil {
 		return err
+	}
+	if requestContext.Identity == config.IdentityUser {
+		contractID := strings.TrimSpace(parsed.String("--contract"))
+		if contractID == "" {
+			return fmt.Errorf("--contract is required with --as user")
+		}
+		return a.runContractDownloadFileAsUser(ctx, contractsvc.NewService(client), requestContext, contractID, fileID, parsed.String("--output-file"), options.raw, parsed.Bool("--force"))
 	}
 
 	writer, outputPath, closeOutput, err := a.contractDownloadWriter(ctx, strings.TrimSpace(fileID), parsed.String("--output-file"), options.raw, parsed.Bool("--force"))
@@ -538,6 +546,10 @@ func (a *App) runContractApproval(ctx context.Context, args []string) error {
 		return a.runContractApprovalStart(ctx, args[1:])
 	case "get":
 		return a.runContractApprovalGet(ctx, args[1:])
+	case "comment":
+		return a.runContractApprovalComment(ctx, args[1:])
+	case "task":
+		return a.runContractApprovalTask(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown contract approval subcommand %q", args[0])
 	}
@@ -583,7 +595,7 @@ func (a *App) runContractApprovalGet(ctx context.Context, args []string) error {
 	}
 
 	processInstanceID := parsed.positionals[0]
-	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractOpenAPIPathPrefix+"/process_instances/"+processInstanceID, openplatform.IdentityPolicyAppOnly)
+	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractOpenAPIPathPrefix+"/process_instances/"+processInstanceID, openplatform.IdentityPolicyAny)
 	if err != nil {
 		return err
 	}

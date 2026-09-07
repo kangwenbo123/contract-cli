@@ -49,6 +49,11 @@ type ProcessInstanceInput struct {
 	TaskInstanceFilter string
 }
 
+type CreateProcessCommentInput struct {
+	MentionIDType string
+	Body          []byte
+}
+
 func NewService(client *openplatform.Client) *Service {
 	return &Service{client: client}
 }
@@ -411,12 +416,79 @@ func (s *Service) GetProcessInstance(ctx context.Context, requestContext openpla
 	if strings.TrimSpace(input.TaskInstanceFilter) != "" {
 		query.Set("task_instance_filter", strings.TrimSpace(input.TaskInstanceFilter))
 	}
-	return s.client.Do(ctx, requestContext, openplatform.Request{
-		Method:         http.MethodGet,
-		Path:           "/open-apis/contract/v1/process_instances/" + url.PathEscape(processInstanceID),
-		Query:          query,
-		IdentityPolicy: openplatform.IdentityPolicyAppOnly,
-	})
+	switch requestContext.Identity {
+	case config.IdentityUser:
+		return s.doForCurrentUser(ctx, requestContext, "get-process-instance", map[string]string{
+			"{process_instance_id}": url.PathEscape(processInstanceID),
+		}, query, nil)
+	case config.IdentityApp:
+		return s.client.Do(ctx, requestContext, openplatform.Request{
+			Method:         http.MethodGet,
+			Path:           "/open-apis/contract/v1/process_instances/" + url.PathEscape(processInstanceID),
+			Query:          query,
+			IdentityPolicy: openplatform.IdentityPolicyAppOnly,
+		})
+	default:
+		return openplatform.Response{}, fmt.Errorf("unsupported identity %q for contract approval get", requestContext.Identity)
+	}
+}
+
+func (s *Service) ListProcessComments(ctx context.Context, requestContext openplatform.RequestContext, processInstanceID string) (openplatform.Response, error) {
+	processInstanceID = strings.TrimSpace(processInstanceID)
+	if processInstanceID == "" {
+		return openplatform.Response{}, fmt.Errorf("process instance id is required")
+	}
+	return s.doForCurrentUser(ctx, requestContext, "list-process-comments", map[string]string{
+		"{process_instance_id}": url.PathEscape(processInstanceID),
+	}, nil, nil)
+}
+
+func (s *Service) CreateProcessComment(ctx context.Context, requestContext openplatform.RequestContext, processInstanceID string, input CreateProcessCommentInput) (openplatform.Response, error) {
+	processInstanceID = strings.TrimSpace(processInstanceID)
+	if processInstanceID == "" {
+		return openplatform.Response{}, fmt.Errorf("process instance id is required")
+	}
+	query := url.Values{}
+	if mentionIDType := strings.TrimSpace(input.MentionIDType); mentionIDType != "" {
+		query.Set("user_id_type", mentionIDType)
+	}
+	return s.doForCurrentUser(ctx, requestContext, "create-process-comment", map[string]string{
+		"{process_instance_id}": url.PathEscape(processInstanceID),
+	}, query, input.Body)
+}
+
+func (s *Service) ListPersonalTasks(ctx context.Context, requestContext openplatform.RequestContext, body []byte) (openplatform.Response, error) {
+	return s.doForCurrentUser(ctx, requestContext, "list-personal-tasks", nil, nil, body)
+}
+
+func (s *Service) ProcessApprovalTask(ctx context.Context, requestContext openplatform.RequestContext, taskInstanceID string, body []byte) (openplatform.Response, error) {
+	taskInstanceID = strings.TrimSpace(taskInstanceID)
+	if taskInstanceID == "" {
+		return openplatform.Response{}, fmt.Errorf("task instance id is required")
+	}
+	return s.doForCurrentUser(ctx, requestContext, "process-approval-task", map[string]string{
+		"{task_instance_id}": url.PathEscape(taskInstanceID),
+	}, nil, body)
+}
+
+func (s *Service) GetFileDownloadMetadata(ctx context.Context, requestContext openplatform.RequestContext, contractID string, fileID string) (openplatform.Response, error) {
+	contractID = strings.TrimSpace(contractID)
+	if contractID == "" {
+		return openplatform.Response{}, fmt.Errorf("contract id is required")
+	}
+	fileID = strings.TrimSpace(fileID)
+	if fileID == "" {
+		return openplatform.Response{}, fmt.Errorf("file id is required")
+	}
+	return s.doForCurrentUser(ctx, requestContext, "download-contract-file", map[string]string{
+		"{contract_id}": url.PathEscape(contractID),
+		"{file_id}":     url.PathEscape(fileID),
+	}, nil, nil)
+}
+
+func (s *Service) doForCurrentUser(ctx context.Context, requestContext openplatform.RequestContext, toolName string, replacements map[string]string, query url.Values, body []byte) (openplatform.Response, error) {
+	requestContext.CommonQuery = nil
+	return s.do(ctx, requestContext, toolName, replacements, query, body)
 }
 
 func (s *Service) do(ctx context.Context, requestContext openplatform.RequestContext, toolName string, replacements map[string]string, query url.Values, body []byte) (openplatform.Response, error) {

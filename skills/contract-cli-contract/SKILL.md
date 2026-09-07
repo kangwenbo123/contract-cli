@@ -1,6 +1,6 @@
 ---
 name: contract-cli-contract
-description: "contract-cli 合同命令技能：支持 user/app 双身份下的合同详情、合同搜索、合同创建、同步用户组、读取合同文本、查询合同分类、列出模板、查看模板详情、创建模板实例、文件上传，区分 user MCP 搜索、app V1 精确/组合搜索和 app V2 编号模糊搜索的参数契约；并支持 app 身份下的字段更新、电子签转纸质签、签署链接、流程字段、合同授权、电子签认证链接、提交/重提/更新/删除合同、下载/生成文件、分享记录与批量分享、协商列表/信息/文件查询下载和审批管理，以及 user 身份下的枚举查询。当用户要使用 `contract-cli contract ...` 操作合同能力时触发。"
+description: "contract-cli 合同命令技能：支持 user/app 双身份下的合同详情、搜索、创建、文本、分类、模板、上传、下载和审批详情；支持 user 身份查询/创建审批评论、查询个人任务、通过/拒绝任务；并支持 app 身份下的合同与审批管理。当用户要使用 `contract-cli contract ...` 操作合同能力时触发。"
 ---
 
 # contract-cli Contract
@@ -42,6 +42,11 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - `contract-cli contract cooperation file download <file-id>`
 - `contract-cli contract approval start <process-instance-id>`
 - `contract-cli contract approval get <process-instance-id>`
+- `contract-cli contract approval comment list <process-instance-id>`
+- `contract-cli contract approval comment create <process-instance-id>`
+- `contract-cli contract approval task list`
+- `contract-cli contract approval task approve <task-instance-id>`
+- `contract-cli contract approval task reject <task-instance-id>`
 - `contract-cli contract enum list --type <enum_type>`
 
 ## 快速决策
@@ -57,11 +62,14 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 想看模板或创建模板实例：用 `contract template ...`
 - 想上传合同正文或附件文件：用 `contract upload-file --as user|app`
 - 想提交、重新提交、更新或删除草稿合同：用 `contract submit|resubmit|patch|delete --as app`
-- 想下载或生成合同相关文件：用 `contract download-file|print-file --as app`
+- 想下载合同相关文件：用 `contract download-file --as user|app`；user 必须加 `--contract`
+- 想生成合同打印文件：用 `contract print-file --as app`
 - 想查分享、批量分享、协商链接/记录：用 `contract share ...`、`contract share batch-create`、`contract cooperation link get` 或 `contract cooperation record get --as app`
 - 想查协商列表或协商文件：用 `contract cooperation search`、`contract cooperation file get` 或 `contract cooperation file download --as app`
 - 想授予合同权限：用 `contract authorization grant --as app`
-- 想发起流程审批或查询审批实例：用 `contract approval start|get --as app`
+- 想发起旧版流程审批：用 `contract approval start --as app`
+- 想查询审批实例：用 `contract approval get --as user|app`
+- 想查/写审批评论或查/办个人任务：先读 [references/approval-mcp-fields.md](references/approval-mcp-fields.md)，再用 `contract approval comment|task --as user`
 - 想查创建合同相关枚举：用 `contract enum list`
 - 若需求是付款：读 [../contract-cli-payment/SKILL.md](../contract-cli-payment/SKILL.md)
 
@@ -81,6 +89,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 分享和协商响应：读 [references/share-cooperation-fields.md](references/share-cooperation-fields.md)
 - 上传、下载、提交、重提、删除等轻量动作：读 [references/contract-actions-fields.md](references/contract-actions-fields.md)
 - 审批发起请求体：读 [references/approval-fields.md](references/approval-fields.md)
+- user MCP 审批详情、评论、任务和统一文件下载：读 [references/approval-mcp-fields.md](references/approval-mcp-fields.md)
 - 新增 app-only 补齐接口命令：读 [references/openapi-gap-commands.md](references/openapi-gap-commands.md)
 - `contract sync-user-groups`、`contract text`、`contract enum list` 当前只补命令级约束；本技能未找到可补到 `contract create` 级别的官方字段页
 
@@ -101,9 +110,9 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 关键规则
 
-- `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file` 同时支持 `--as user` 和 `--as app`
-- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract download-file`、`contract delete`、`contract print-file`、`contract share get`、`contract share batch-create`、`contract cooperation link get`、`contract cooperation record get`、`contract cooperation search`、`contract cooperation file get/download`、`contract approval start`、`contract approval get` 当前仅支持 `--as app`
-- 除上述双身份命令和新增 app-only 命令外，其余命令仍然只支持 `--as user`
+- `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get` 同时支持 `--as user` 和 `--as app`
+- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract share get`、`contract share batch-create`、`contract cooperation link get`、`contract cooperation record get`、`contract cooperation search`、`contract cooperation file get/download`、`contract approval start` 当前仅支持 `--as app`
+- `contract approval comment list/create`、`contract approval task list/approve/reject` 当前仅支持 `--as user`
 - `contract create` 当前直接接收原始创建请求体，不额外暴露 `--template`
 - `contract create --as app` 走 `POST /open-apis/contract/v1/contracts`
 - `contract create --as app` 的请求体必须自己带 `create_user_id`
@@ -149,6 +158,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - `contract resubmit --as app` 走 `POST /open-apis/contract/v1/contracts/{contract_id}/resubmit`，`--input-file` / `--data` 可选
 - `contract patch --as app` 走 `PATCH /open-apis/contract/v1/contracts/{contract_id}`，`--input-file` / `--data` 必填且互斥
 - `contract download-file --as app` 走 `GET /open-apis/contract/v1/files/{file_id}`；默认拉起保存弹窗，Agent/CI/远程环境推荐传 `--output-file`
+- `contract download-file --as user` 必须传 `--contract`，CLI 获取 300 秒预签名地址后立即下载二进制；不输出或记录该地址，文件先写入同目录临时文件并校验，完整下载后才替换或创建目标文件
 - `contract download-file --raw` 会把二进制内容写到 stdout，不打印额外提示
 - `contract delete --as app` 走 `DELETE /open-apis/contract/v1/contracts/{contract_id}`，命令直接删除，不额外要求 `--yes`
 - `contract print-file --as app` 走 `POST /open-apis/contract/v1/files`，`--input-file` / `--data` 必填且互斥
@@ -161,6 +171,9 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - `contract cooperation file download --as app` 走 `GET /open-apis/contract/v1/contracts/cooperation/{file_id}/download_file`
 - `contract approval start --as app` 走 `POST /open-apis/contract/v1/process_instances/{process_instance_id}/task_approval`，`--input-file` / `--data` 必填且互斥
 - `contract approval get --as app` 走 `GET /open-apis/contract/v1/process_instances/{process_instance_id}`，可选 `--notice-filter` / `--task-instance-filter`
+- `contract approval get --as user` 走 `GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}`，不发送调用人 query，也不主动发送 `X-MCP-Response-Profile`
+- user 评论/任务命令的调用人由个人 Token 唯一确定；`--mention-id-type` 仅解释评论请求体中的 `user_id` 数组
+- `contract approval task list` 虽然使用 POST，但属于读操作；评论创建和任务通过/拒绝是非幂等写操作，不能自动重试
 - 不要使用 `dowload-file` 拼写；正式命令是 `download-file`
 - 常用 `file_type`：`text` 合同文本、`attachment` 其他附件、`scan` 归档扫描件、`cause` 合同附件、`archiveAttachment` 归档附件、`customPictureAttachment` 图片附件、`customTableAttachment` 表格附件、`customFileAttachment` 文件附件
 - `contract text` 支持 `--full-text`、`--offset`、`--limit`
@@ -189,6 +202,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - [references/contract-actions-fields.md](references/contract-actions-fields.md)
 - [references/openapi-gap-commands.md](references/openapi-gap-commands.md)
 - [references/approval-fields.md](references/approval-fields.md)
+- [references/approval-mcp-fields.md](references/approval-mcp-fields.md)
 - P3 接口的完整类型、必填项、枚举与约束：按“P3 接口参数参考”选择对应文档
 
 ## 操作建议
@@ -209,7 +223,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 不要这样做
 
-- 写命令返回“执行结果不确定”时，不要立即重试创建、模板实例化、用户组同步或文件上传；先用查询命令确认结果。
+- 写命令返回“执行结果不确定”时，不要立即重试创建、模板实例化、用户组同步、文件上传、评论创建或任务处理；先用对应查询命令确认结果。
 
 - 不要对 `contract enum` 传 `--as app`
 - 不要继续写 `--file contract.json`；JSON 请求体用 `--input-file`

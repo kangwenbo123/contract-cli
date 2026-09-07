@@ -487,12 +487,12 @@ func addContractHelp(registry map[string]helpTopic) {
 			{"contract-cli contract submit <contract-id> [flags]", "app 身份提交合同"},
 			{"contract-cli contract resubmit <contract-id> [flags]", "app 身份重新提交合同"},
 			{"contract-cli contract patch <contract-id> [flags]", "app 身份更新合同"},
-			{"contract-cli contract download-file <file-id> [flags]", "app 身份下载合同相关文件"},
+			{"contract-cli contract download-file <file-id> [flags]", "下载合同相关文件"},
 			{"contract-cli contract delete <contract-id> [flags]", "app 身份删除草稿合同"},
 			{"contract-cli contract print-file [flags]", "app 身份生成合同打印文件"},
 			{"contract-cli contract share <subcommand> [flags]", "app 身份查询合同分享记录"},
 			{"contract-cli contract cooperation <resource> <subcommand> [flags]", "app 身份查询合同协商信息"},
-			{"contract-cli contract approval <subcommand> [flags]", "app 身份操作审批流程"},
+			{"contract-cli contract approval <subcommand> [flags]", "操作审批流程、评论和个人任务"},
 			{"contract-cli contract category list [flags]", "列出合同分类"},
 			{"contract-cli contract template <subcommand> [flags]", "模板相关命令"},
 			{"contract-cli contract enum list [flags]", "查询枚举值"},
@@ -657,21 +657,24 @@ func addContractHelp(registry map[string]helpTopic) {
 	}
 	registry["contract download-file"] = helpTopic{
 		Name:    "contract download-file",
-		Summary: "app 身份下载合同相关文件。",
+		Summary: "下载合同相关文件；app 直接下载，user 通过临时地址下载。",
 		Usage:   []string{"contract-cli contract download-file <file-id> [flags]"},
 		Flags: concatHelpFlags(openPlatformCommonFlags(), []helpFlag{
+			{"--contract <contract-id>", "user 身份必填，文件所属合同 ID；app 身份不需要"},
 			{"--output-file <path>", "保存到指定文件；不传时默认拉起保存文件弹窗"},
 			{"--force", "覆盖已存在的 --output-file"},
 		}),
 		Examples: []string{
+			"contract-cli contract download-file <file-id> --contract <contract-id> --profile contract --as user --output-file ./contract.pdf",
 			"contract-cli contract download-file <file-id> --profile contract --as app",
 			"contract-cli contract download-file <file-id> --profile contract --as app --output-file ./contract.pdf",
 			"contract-cli contract download-file <file-id> --profile contract --as app --raw > contract.pdf",
 		},
 		Notes: []string{
-			"app-only: 当前仅支持 --as app。",
-			"走 GET /open-apis/contract/v1/files/{file_id}。",
+			"user: /open-apis/contract/v1/mcp/contracts/{contract_id}/files/{file_id}/download；返回的 300 秒临时地址会被立即下载且不会输出。",
+			"app: /open-apis/contract/v1/files/{file_id}。",
 			"默认拉起保存文件弹窗；无 GUI/远程/CI 环境推荐显式传 --output-file。",
+			"user 文件先写同目录临时文件并校验大小，完整下载后才替换或创建目标文件。",
 			"--raw 会把文件内容写到 stdout，不打印额外提示。",
 			"不实现 dowload-file 拼写别名。",
 		},
@@ -985,10 +988,12 @@ func addContractHelp(registry map[string]helpTopic) {
 	}
 	registry["contract approval"] = helpTopic{
 		Name:  "contract approval",
-		Usage: []string{"contract-cli contract approval <subcommand> [flags]"},
+		Usage: []string{"contract-cli contract approval <subcommand> [flags]", "contract-cli contract approval <resource> <subcommand> [flags]"},
 		Commands: []helpCommand{
 			{"contract-cli contract approval start <process-instance-id> [flags]", "app 身份发起流程审批"},
-			{"contract-cli contract approval get <process-instance-id> [flags]", "app 身份查询审批实例详情"},
+			{"contract-cli contract approval get <process-instance-id> [flags]", "查询审批实例详情"},
+			{"contract-cli contract approval comment <subcommand> [flags]", "user 身份查询或创建审批评论"},
+			{"contract-cli contract approval task <subcommand> [flags]", "user 身份查询或处理个人任务"},
 		},
 	}
 	registry["contract approval start"] = helpTopic{
@@ -1008,22 +1013,93 @@ func addContractHelp(registry map[string]helpTopic) {
 	}
 	registry["contract approval get"] = helpTopic{
 		Name:    "contract approval get",
-		Summary: "app 身份查询审批实例详情。",
+		Summary: "查询审批实例详情，按当前身份自动路由。",
 		Usage:   []string{"contract-cli contract approval get <process-instance-id> [flags]"},
 		Flags: concatHelpFlags(openPlatformCommonFlags(), []helpFlag{
 			{"--notice-filter <filter>", "可选，审批实例详情查询参数 notice_filter"},
 			{"--task-instance-filter <filter>", "可选，审批实例详情查询参数 task_instance_filter"},
 		}),
 		Examples: []string{
+			"contract-cli contract approval get <process-instance-id> --profile contract --as user",
 			"contract-cli contract approval get <process-instance-id> --profile contract --as app",
 			"contract-cli contract approval get <process-instance-id> --profile contract --as app --notice-filter notice_filter --task-instance-filter task_instance_filter",
 		},
 		Notes: []string{
-			"app-only: 当前仅支持 --as app。",
-			"走 GET /open-apis/contract/v1/process_instances/{process_instance_id}。",
+			"user: GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}。",
+			"app: GET /open-apis/contract/v1/process_instances/{process_instance_id}。",
+			"user 请求不发送调用人 user_id/user_id_type，也不主动发送 X-MCP-Response-Profile。",
 			"不接受 --input-file / --data。",
 		},
 	}
+	registry["contract approval comment"] = helpTopic{
+		Name:  "contract approval comment",
+		Usage: []string{"contract-cli contract approval comment <subcommand> [flags]"},
+		Commands: []helpCommand{
+			{"contract-cli contract approval comment list <process-instance-id> [flags]", "查询完整审批评论树"},
+			{"contract-cli contract approval comment create <process-instance-id> [flags]", "创建审批评论或回复"},
+		},
+	}
+	registry["contract approval comment list"] = helpTopic{
+		Name:    "contract approval comment list",
+		Summary: "user 身份查询完整审批评论树。",
+		Usage:   []string{"contract-cli contract approval comment list <process-instance-id> [flags]"},
+		Flags:   userMCPCommonFlags(),
+		Examples: []string{
+			"contract-cli contract approval comment list <process-instance-id> --profile contract --as user",
+		},
+		Notes: []string{
+			"仅支持 --as user。",
+			"走 GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}/comments。",
+			"返回完整递归评论树，不分页；已删除评论仍可能保留，附件以 available 判断可用性。",
+		},
+	}
+	registry["contract approval comment create"] = helpTopic{
+		Name:    "contract approval comment create",
+		Summary: "user 身份创建审批评论、回复、@用户或关联附件。",
+		Usage:   []string{"contract-cli contract approval comment create <process-instance-id> --input-file <path>|--data <json> [flags]"},
+		Flags: concatHelpFlags(userMCPCommonFlags(), jsonBodyFlags(), []helpFlag{
+			{"--mention-id-type <type>", "请求体 user_id 数组的 ID 类型；不传由后端默认 open_id"},
+		}),
+		Examples: []string{
+			"contract-cli contract approval comment create <process-instance-id> --profile contract --as user --data '{\"content\":\"请确认\"}'",
+		},
+		Notes: []string{
+			"仅支持 --as user；评论发起人固定为当前个人 Token。",
+			"走 POST /open-apis/contract/v1/mcp/process_instances/{process_instance_id}/comments。",
+			"非幂等；结果不确定时先用 comment list 查询，不要直接重试。",
+		},
+	}
+	registry["contract approval task"] = helpTopic{
+		Name:  "contract approval task",
+		Usage: []string{"contract-cli contract approval task <subcommand> [flags]"},
+		Commands: []helpCommand{
+			{"contract-cli contract approval task list [flags]", "查询当前用户任务列表"},
+			{"contract-cli contract approval task approve <task-instance-id> [flags]", "通过普通审批任务"},
+			{"contract-cli contract approval task reject <task-instance-id> [flags]", "拒绝普通审批任务"},
+		},
+	}
+	registry["contract approval task list"] = helpTopic{
+		Name:    "contract approval task list",
+		Summary: "user 身份查询当前用户待办、已办或抄送/知会任务。",
+		Usage:   []string{"contract-cli contract approval task list [flags]"},
+		Flags: concatHelpFlags(userMCPCommonFlags(), jsonBodyFlags(), []helpFlag{
+			{"--query <text>", "按合同名称、编号或申请人名称查询，会合并进 JSON body"},
+			{"--task-type <todo|done|notice>", "任务类型：todo=0、done=1、notice=2"},
+			{"--page-index <n>", "从 0 开始的页码"},
+			{"--page-size <n>", "每页条数，1-100"},
+		}),
+		Examples: []string{
+			"contract-cli contract approval task list --profile contract --as user --task-type todo --page-size 20",
+			"contract-cli contract approval task list --profile contract --as user --input-file task-search.json",
+		},
+		Notes: []string{
+			"仅支持 --as user。",
+			"走 POST /open-apis/contract/v1/mcp/tasks；虽然使用 POST，但属于读取操作，可安全重试一次临时网络错误。",
+			"命令 flag 会覆盖同名 JSON body 字段；其余筛选字段通过 --input-file/--data 传入。",
+		},
+	}
+	registry["contract approval task approve"] = approvalTaskActionHelp("approve", "通过普通审批任务；审批意见可选。")
+	registry["contract approval task reject"] = approvalTaskActionHelp("reject", "拒绝普通审批任务；reject 时必填非空审批意见。")
 	addContractNestedHelp(registry)
 }
 
@@ -1749,6 +1825,35 @@ func openPlatformCommonFlags() []helpFlag {
 		{"--raw", "原样输出响应 body"},
 		{"--user-id-type <type>", "通用 query 参数 user_id_type；不传默认 user_id，传了则覆盖默认值"},
 		{"--user-id <id>", "通用 query 参数 user_id；传了就透传，不传就不带"},
+	}
+}
+
+func userMCPCommonFlags() []helpFlag {
+	return []helpFlag{
+		{"--profile <name>", "profile 名称；不传使用当前 profile"},
+		{"--as <user|app>", "仅支持 user；不传时自动选择 user"},
+		{"--output <json|yaml|table>", "输出格式，默认 json"},
+		{"--raw", "原样输出响应 body"},
+	}
+}
+
+func approvalTaskActionHelp(action string, summary string) helpTopic {
+	return helpTopic{
+		Name:    "contract approval task " + action,
+		Summary: summary,
+		Usage:   []string{"contract-cli contract approval task " + action + " <task-instance-id> [flags]"},
+		Flags: concatHelpFlags(userMCPCommonFlags(), []helpFlag{
+			{"--comment <text>", "审批意见；reject 时必填且不能为空白"},
+			{"--file-id <file-id>", "审批附件 ID，可重复；附件类型必须是 approveAttachment"},
+		}),
+		Examples: []string{
+			"contract-cli contract approval task " + action + " <task-instance-id> --profile contract --as user --comment <审批意见>",
+		},
+		Notes: []string{
+			"仅支持 --as user；盖章/归档节点不支持，后端返回 110507。",
+			"走 POST /open-apis/contract/v1/mcp/tasks/{task_instance_id}/approval。",
+			"非幂等；结果不确定时先查询 task list 或 approval get，不要直接重试。",
+		},
 	}
 }
 

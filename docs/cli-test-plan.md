@@ -696,7 +696,7 @@ DELETE /open-apis/contract/v1/contracts/{contract_id}
 - `patch` 的 `--input-file` / `--data` 必须传一个且互斥。
 - `delete` 不要求 `--yes`，执行前由测试者自行确认目标是草稿合同。
 
-### 5.10.2 app-only 下载与生成打印文件
+### 5.10.2 双身份下载与 app-only 生成打印文件
 
 下载文件建议显式指定保存路径，避免默认保存弹窗在 Agent、SSH 或 CI 环境不可用：
 
@@ -704,6 +704,7 @@ DELETE /open-apis/contract/v1/contracts/{contract_id}
 contract-cli contract download-file "$FILE_ID" --profile "$PROFILE" --as app --output-file /tmp/contract-download.pdf
 contract-cli contract download-file "$FILE_ID" --profile "$PROFILE" --as app --output-file /tmp/contract-download.pdf --force
 contract-cli contract download-file "$FILE_ID" --profile "$PROFILE" --as app --raw > /tmp/contract-download.raw
+contract-cli contract download-file "$FILE_ID" --contract "$CONTRACT_ID" --profile "$PROFILE" --as user --output-file /tmp/contract-download-user.pdf
 ```
 
 生成打印文件需要准备 JSON 请求体：
@@ -722,12 +723,15 @@ contract-cli contract print-file --profile "$PROFILE" --as app --input-file /tmp
 
 ```text
 GET /open-apis/contract/v1/files/{file_id}
+GET /open-apis/contract/v1/mcp/contracts/{contract_id}/files/{file_id}/download
 POST /open-apis/contract/v1/files
 ```
 
 检查点：
 
-- `download-file` 当前仅支持 app 身份，不支持 `dowload-file` 拼写。
+- `download-file` 支持 user/app，不支持 `dowload-file` 拼写；user 身份必须传 `--contract`。
+- user 身份先获取 JSON 元数据，再无 Authorization 访问 300 秒预签名地址；日志和输出不得出现该地址。
+- user 文件保存失败时不得破坏已有目标文件或遗留未完成的新文件；完整下载并校验 `file_size` 后才提交，且需覆盖硬链接不可用时的独占创建降级路径。
 - 不传 `--output-file` 且不传 `--raw` 时，CLI 默认拉起保存文件弹窗。
 - 无 GUI、远程、CI、Agent 环境下，保存弹窗失败时不应发 HTTP，并提示改用 `--output-file`。
 - `--output-file` 文件已存在时默认失败，加 `--force` 才覆盖。
@@ -1541,7 +1545,7 @@ CLI 不在本地强校验扩展名白名单，扩展名与 `file_type` 的最终
 
 ## 16. P2 付款与审批命令专项测试
 
-本模块覆盖 `payment *` 和 `contract approval *`。当前这一组命令均为 app-only。
+本模块覆盖 `payment *` 和 `contract approval *`。付款与 `approval start` 为 app-only；MCP 评论和个人任务命令为 user-only；`approval get` 支持双身份。
 
 ### 16.1 付款申请
 
@@ -1588,6 +1592,12 @@ GET /open-apis/contract/v1/contracts/payments/{payment_plan_uuid}/payment_record
 ```bash
 contract-cli contract approval start "$PROCESS_INSTANCE_ID" --profile "$PROFILE" --as app --input-file approval.json --output json
 contract-cli contract approval get "$PROCESS_INSTANCE_ID" --profile "$PROFILE" --as app --notice-filter notice_filter --task-instance-filter task_instance_filter --output json
+contract-cli contract approval get "$PROCESS_INSTANCE_ID" --profile "$PROFILE" --as user --output json
+contract-cli contract approval comment list "$PROCESS_INSTANCE_ID" --profile "$PROFILE" --as user --output json
+contract-cli contract approval comment create "$PROCESS_INSTANCE_ID" --profile "$PROFILE" --as user --data '{"content":"请确认"}' --output json
+contract-cli contract approval task list --profile "$PROFILE" --as user --task-type todo --page-size 20 --output json
+contract-cli contract approval task approve "$TASK_INSTANCE_ID" --profile "$PROFILE" --as user --comment "同意" --output json
+contract-cli contract approval task reject "$TASK_INSTANCE_ID" --profile "$PROFILE" --as user --comment "条款风险未解决" --output json
 ```
 
 预期底层接口：
@@ -1595,6 +1605,11 @@ contract-cli contract approval get "$PROCESS_INSTANCE_ID" --profile "$PROFILE" -
 ```text
 POST /open-apis/contract/v1/process_instances/{process_instance_id}/task_approval
 GET /open-apis/contract/v1/process_instances/{process_instance_id}
+GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}
+GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}/comments
+POST /open-apis/contract/v1/mcp/process_instances/{process_instance_id}/comments
+POST /open-apis/contract/v1/mcp/tasks
+POST /open-apis/contract/v1/mcp/tasks/{task_instance_id}/approval
 ```
 
 ### 16.4 参数负向测试
@@ -1605,6 +1620,9 @@ contract-cli payment update "$PAYMENT_ID" --contract "$CONTRACT_ID" --profile "$
 contract-cli payment record create --contract "$CONTRACT_ID" --profile "$PROFILE" --as app --input-file payment-record.json
 contract-cli payment record list --profile "$PROFILE" --as app
 contract-cli contract approval start "$PROCESS_INSTANCE_ID" --profile "$PROFILE" --as app
+contract-cli contract approval comment list "$PROCESS_INSTANCE_ID" --profile "$PROFILE" --as app
+contract-cli contract approval task reject "$TASK_INSTANCE_ID" --profile "$PROFILE" --as user --comment "   "
+contract-cli contract download-file "$FILE_ID" --profile "$PROFILE" --as user --output-file /tmp/missing-contract.pdf
 contract-cli payment get "$PAYMENT_ID" --contract "$CONTRACT_ID" --profile "$PROFILE" --as user
 ```
 
@@ -1613,4 +1631,5 @@ contract-cli payment get "$PAYMENT_ID" --contract "$CONTRACT_ID" --profile "$PRO
 - 缺少 `--contract`、`--payment`、`--plan` 或位置 ID 时返回明确 usage 或必填错误，且不发送 HTTP。
 - POST/PATCH 缺少 `--input-file` / `--data` 时报错，且不发送 HTTP。
 - GET/list 命令传入 `--input-file` / `--data` 时报错，且不发送 HTTP。
-- 显式 `--as user` 调用这些 app-only 命令时报 `only supports --as app`，且不发送 HTTP。
+- 显式 `--as user` 调用 app-only 命令时报 `only supports --as app`，显式 `--as app` 调用 user-only 命令时报 `only supports --as user`，且不发送 HTTP。
+- reject 空白意见、user 下载缺少 `--contract` 均在发 HTTP 前失败。
