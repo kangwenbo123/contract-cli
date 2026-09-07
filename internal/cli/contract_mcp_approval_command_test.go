@@ -241,6 +241,43 @@ func TestContractMCPApprovalReadRetriesButWritesRemainUncertain(t *testing.T) {
 	})
 }
 
+func TestContractApprovalCommentIsRedactedWithoutChangingRequest(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{"approve", "reject"} {
+		for _, flags := range [][]string{{"--comment", "private approval detail"}, {"--comment=private approval detail"}} {
+			t.Run(action+"/"+flags[0], func(t *testing.T) {
+				t.Parallel()
+				store := config.NewStore(t.TempDir())
+				if err := store.UpsertProfile(uploadProfile(config.IdentityUser), true); err != nil {
+					t.Fatal(err)
+				}
+				logs := &bytes.Buffer{}
+				app := cli.New(cli.Options{
+					Stdout: io.Discard, Stderr: logs, Store: store,
+					HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+						body, err := io.ReadAll(req.Body)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if !strings.Contains(string(body), `"comment":"private approval detail"`) {
+							t.Fatalf("request comment changed: %s", body)
+						}
+						return jsonResponse(`{"code":0,"success":true}`), nil
+					})},
+				})
+				args := []string{"contract", "approval", "task", action, "112233", "--profile", "contract", "--as", "user"}
+				args = append(args, flags...)
+				if err := app.Run(context.Background(), args); err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(logs.String(), "private approval detail") || !strings.Contains(logs.String(), "[REDACTED]") {
+					t.Fatalf("approval comment was not redacted: %s", logs.String())
+				}
+			})
+		}
+	}
+}
+
 type temporaryApprovalNetworkError struct{}
 
 func (temporaryApprovalNetworkError) Error() string   { return "temporary network error" }

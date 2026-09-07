@@ -56,7 +56,7 @@ func (a *App) runContractApprovalCommentList(ctx context.Context, args []string)
 		a.logger.Error("list contract approval comments failed", "process_instance_id", processInstanceID, "error", err.Error())
 		return err
 	}
-	return a.renderOpenPlatformResponse(options, response)
+	return a.renderContractMCPResponse(options, response)
 }
 
 func (a *App) runContractApprovalCommentCreate(ctx context.Context, args []string) error {
@@ -87,7 +87,7 @@ func (a *App) runContractApprovalCommentCreate(ctx context.Context, args []strin
 		a.logger.Error("create contract approval comment failed", "process_instance_id", processInstanceID, "error", err.Error())
 		return err
 	}
-	return a.renderOpenPlatformResponse(options, response)
+	return a.renderContractMCPResponse(options, response)
 }
 
 func (a *App) runContractApprovalTask(ctx context.Context, args []string) error {
@@ -162,7 +162,7 @@ func (a *App) runContractApprovalTaskList(ctx context.Context, args []string) er
 		a.logger.Error("list personal contract approval tasks failed", "error", err.Error())
 		return err
 	}
-	return a.renderOpenPlatformResponse(options, response)
+	return a.renderContractMCPResponse(options, response)
 }
 
 func parseApprovalTaskType(value string) (int, error) {
@@ -221,7 +221,7 @@ func (a *App) runContractApprovalTaskAction(ctx context.Context, action string, 
 		a.logger.Error("run contract approval task action failed", "task_instance_id", taskInstanceID, "action", action, "error", err.Error())
 		return err
 	}
-	return a.renderOpenPlatformResponse(options, response)
+	return a.renderContractMCPResponse(options, response)
 }
 
 func validateApprovalFileIDs(values []string) ([]string, error) {

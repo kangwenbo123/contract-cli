@@ -22,6 +22,7 @@
 - `comment create` 请求体支持 `content`、`parent_comment_id`、`user_id`、`file_ids`、`task_instance_id`。
 - `user_id` 和 `file_ids` 都是字符串数组。`--mention-id-type` 映射到 query `user_id_type`，仅解释被 @ 用户 ID；不指定评论发起人。
 - 创建评论是非幂等操作。若 CLI 返回“执行结果不确定”，先调用 `comment list` 确认，不能盲目重试。
+- 本期 user 审批详情、评论和任务命令遇到业务失败会保留响应输出并以退出码 `1` 结束，`--raw` 也适用；完整原因读取 stdout，stderr 仅输出摘要。缺少有效 `code` 或响应 JSON 非法也返回失败，业务失败不会自动重试。
 
 评论示例：
 
@@ -54,6 +55,7 @@ contract-cli contract approval task list --profile contract --as user --data '{"
 ## 任务通过与拒绝
 
 - approve 的 `--comment` 可选；reject 的 `--comment` 必填且不能为空白。
+- `--comment` 在日志中脱敏，发送给接口的审批意见保持完整。
 - `--file-id` 可重复，按 `file_ids: String[]` 传入；必须是正整数、属于当前审批业务，且上传类型为 `approveAttachment`。
 - CLI 不暴露 `archive_number`。盖章和归档节点不支持该接口，返回 `110507`，应转到合同系统页面处理。
 - 任务处理非幂等，成功后重复调用会变为不可操作。若返回“执行结果不确定”，先用 task list 或 approval get 查询状态。

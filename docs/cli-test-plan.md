@@ -1633,3 +1633,12 @@ contract-cli payment get "$PAYMENT_ID" --contract "$CONTRACT_ID" --profile "$PRO
 - GET/list 命令传入 `--input-file` / `--data` 时报错，且不发送 HTTP。
 - 显式 `--as user` 调用 app-only 命令时报 `only supports --as app`，显式 `--as app` 调用 user-only 命令时报 `only supports --as user`，且不发送 HTTP。
 - reject 空白意见、user 下载缺少 `--contract` 均在发 HTTP 前失败。
+
+### 16.5 User MCP 业务状态与审批意见日志回归
+
+- 审批详情、评论查询/创建、任务查询/通过/拒绝收到 HTTP 200 且业务码非零时返回失败；stdout 保留响应，业务错误不得自动重试。
+- `code=0` 且 `success=false` 仍失败；`code=0` 且未提供 `success` 兼容成功响应。
+- 空响应、非法 JSON、缺少或类型错误的 `code` 不得按成功处理；JSON/YAML/raw 三种输出均验证。
+- JSON/YAML 输出保留 Long ID 精度，raw 保留原始响应；输出写入失败必须向上传递。
+- `--comment <text>` 和 `--comment=<text>` 在 approve/reject 命令的日志中均被脱敏，HTTP 请求中的意见保持完整。
+- app 下载、app 审批详情及既有 user 合同详情的响应行为保持不变；原有 Token 刷新和网络重试测试继续通过。

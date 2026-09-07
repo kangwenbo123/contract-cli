@@ -606,6 +606,9 @@ func (a *App) runContractApprovalGet(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if requestContext.Identity == config.IdentityUser {
+		return a.renderContractMCPResponse(options, response)
+	}
 	return a.renderOpenPlatformResponse(options, response)
 }
 
