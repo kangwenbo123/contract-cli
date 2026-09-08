@@ -69,7 +69,7 @@ contract-cli contract enum list --profile contract --type contract_status
 
 ## 已知限制
 
-- `contract upload-file` 当前同时支持 user/app 身份，均走 `/open-apis/contract/v1/files/upload`
+- `contract upload-file` 支持 user/app；user 上传 `reviewAttachment` / `approveAttachment` 自动完成 MCP prepare → content → commit，返回最终 `file_id`；app 和其他 user 类型继续走 `/open-apis/contract/v1/files/upload`。新附件须同一 user 在 commit 后 30 分钟内用于评论/审批，详见 [附件规则](approval-mcp-fields.md#新附件上传与复用)
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *` 当前仅支持 app 身份
 - `contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract approval start` 当前仅支持 app 身份
 - `contract download-file`、`contract approval get` 支持 user/app；`contract approval comment list/create`、`contract approval task list/approve/reject` 仅支持 user
@@ -160,7 +160,7 @@ contract-cli contract download-file file_123 --profile contract --as app --outpu
 # 管道场景使用 --raw
 contract-cli contract download-file file_123 --profile contract --as app --raw > contract.pdf
 
-# user 身份必须同时提供合同 ID；CLI 会立即消费 300 秒预签名地址
+# user 身份必须同时提供合同 ID；CLI 会立即消费 300 秒TOS 临时预签名 URL
 contract-cli contract download-file <file-id> --contract <contract-id> --profile contract --as user --output-file ./contract.pdf
 
 # 生成合同打印文件，请求体必填

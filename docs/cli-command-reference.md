@@ -68,7 +68,7 @@ contract-cli contract get <contract-id> --help
   - `contract template get --as app` 走 `/open-apis/contract/v1/templates/{template_id}`
   - `contract template instantiate --as user` 走 `/open-apis/contract/v1/mcp/template_instances`
   - `contract template instantiate --as app` 走 `POST /open-apis/contract/v1/template_instances`
-  - `contract upload-file --as user` 与 `contract upload-file --as app` 均走 `POST /open-apis/contract/v1/files/upload`
+  - `contract upload-file --as user` 上传 `reviewAttachment` / `approveAttachment` 自动走 MCP prepare → content → commit；app 和其他 user 类型继续走 `POST /open-apis/contract/v1/files/upload`
   - `mdm vendor list --as user` 走 `/open-apis/contract/v1/mcp/vendors`
   - `mdm vendor list --as app` 走 `/open-apis/mdm/v1/vendors`
   - `mdm vendor get --as user` 走 `/open-apis/contract/v1/mcp/vendors/{vendor_id}`
@@ -686,8 +686,9 @@ contract-cli contract upload-file --profile contract --as app --file ./附件.pd
 身份规则：
 
 - `--as user` 和 `--as app` 均支持。
-- 走 `POST /open-apis/contract/v1/files/upload`。
-- 请求是 `multipart/form-data`，字段为 `file_name`、`file_type`、`file`。
+- user 上传 `reviewAttachment` / `approveAttachment` 自动执行 MCP prepare → content → commit，只在 commit 成功后输出文件 ID。临时 content 请求为仅含 `file` 的 multipart，不携带用户 Token。
+- app 和其他 user 类型走 `POST /open-apis/contract/v1/files/upload`，multipart 字段仍为 `file_name`、`file_type`、`file`。
+- 新评论/审批附件必须由同一 user 上传并在 commit 后 30 分钟内使用；已有文件的复用规则见 [MCP 附件说明](user-mcp-approval-interfaces.md#新评论审批附件的上传前置流程)。这两类 user 上传忽略 `--user-id` / `--user-id-type`，文件须非空且符合服务端 `max_size`。
 - 不接受 `--input-file` / `--data`；这两个参数只用于 JSON 请求体。
 
 本地校验：
@@ -698,6 +699,8 @@ contract-cli contract upload-file --profile contract --as app --file ./附件.pd
 
 常用 `file_type`：
 
+- `reviewAttachment`：评论新附件。
+- `approveAttachment`：审批新附件。
 - `text`：合同文本。
 - `attachment`：其他附件。
 - `scan`：归档扫描件。
@@ -803,7 +806,7 @@ contract-cli contract download-file <file-id> --contract <contract-id> --profile
 
 - `--as app` 走 `GET /open-apis/contract/v1/files/{file_id}`。
 - `--as user` 走 `GET /open-apis/contract/v1/mcp/contracts/{contract_id}/files/{file_id}/download`，CLI 随即访问 300 秒有效的 `download_url`；该地址不会输出、持久化或写入日志。
-- user 身份保存到文件时先写同目录临时文件并校验 `file_size`，完整下载后才替换或创建目标文件；不支持硬链接的文件系统会退化为独占创建，正常错误返回时会清理未完成的新文件，且不会覆盖已有目标文件。
+- user 身份保存到文件时先写同目录临时文件，优先按实际响应 `Content-Length` 校验长度，缺失时回退到 `file_size`，完整下载后才替换或创建目标文件；不支持硬链接的文件系统会退化为独占创建，正常错误返回时会清理未完成的新文件，且不会覆盖已有目标文件。
 - 不实现 `dowload-file` 拼写别名。
 - 无 GUI、远程、CI、Agent 环境推荐显式传 `--output-file`。
 

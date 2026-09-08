@@ -44,18 +44,19 @@ func TestContractDownloadFileAsUserWritesOnlyAfterValidation(t *testing.T) {
 				if req.Header.Get("Authorization") != "Bearer user-token" {
 					t.Fatalf("metadata authorization = %q", req.Header.Get("Authorization"))
 				}
-				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","file_name":"contract.pdf","file_size":14,"download_url":"https://files.example.test/object?signature=secret"}}`), nil
+				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","file_name":"contract.pdf","file_size":14,"download_url":"https://files.example.test/tenant/contract%20copy.pdf?X-Tos-Expires=300&X-Tos-Credential=test%2Fscope&X-Tos-Signature=secret&response-content-disposition=attachment%3B%20filename%3Da%2Bb.pdf"}}`), nil
 			case 2:
-				if req.URL.String() != "https://files.example.test/object?signature=secret" {
+				if req.URL.String() != "https://files.example.test/tenant/contract%20copy.pdf?X-Tos-Expires=300&X-Tos-Credential=test%2Fscope&X-Tos-Signature=secret&response-content-disposition=attachment%3B%20filename%3Da%2Bb.pdf" {
 					t.Fatalf("signed URL = %q", req.URL.String())
 				}
 				if req.Header.Get("Authorization") != "" {
 					t.Fatalf("signed download leaked authorization = %q", req.Header.Get("Authorization"))
 				}
 				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(strings.NewReader("download bytes")),
+					StatusCode:    http.StatusOK,
+					ContentLength: -1, // No Content-Length in this fixture; exercise metadata fallback.
+					Header:        make(http.Header),
+					Body:          io.NopCloser(strings.NewReader("download bytes")),
 				}, nil
 			default:
 				t.Fatalf("unexpected request %d: %s", requests, req.URL.String())
@@ -110,7 +111,7 @@ func TestContractDownloadFileAsUserKeepsExistingFileWhenSignedDownloadFails(t *t
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requests++
 			if requests == 1 {
-				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","file_size":100,"download_url":"https://files.example.test/object?signature=secret"}}`), nil
+				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","file_size":100,"download_url":"https://files.example.test/tenant/contract%20copy.pdf?X-Tos-Expires=300&X-Tos-Credential=test%2Fscope&X-Tos-Signature=secret&response-content-disposition=attachment%3B%20filename%3Da%2Bb.pdf"}}`), nil
 			}
 			return &http.Response{
 				StatusCode: http.StatusBadGateway,
@@ -164,12 +165,13 @@ func TestContractDownloadFileAsUserReplacesExistingFileAfterSuccessfulDownload(t
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			requests++
 			if requests == 1 {
-				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","file_size":14,"download_url":"https://files.example.test/object?signature=secret"}}`), nil
+				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","file_size":14,"download_url":"https://files.example.test/tenant/contract%20copy.pdf?X-Tos-Expires=300&X-Tos-Credential=test%2Fscope&X-Tos-Signature=secret&response-content-disposition=attachment%3B%20filename%3Da%2Bb.pdf"}}`), nil
 			}
 			return &http.Response{
-				StatusCode: http.StatusOK,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader("download bytes")),
+				StatusCode:    http.StatusOK,
+				ContentLength: -1, // No Content-Length in this fixture; exercise metadata fallback.
+				Header:        make(http.Header),
+				Body:          io.NopCloser(strings.NewReader("download bytes")),
 			}, nil
 		})},
 	})
@@ -324,7 +326,7 @@ func TestContractDownloadFileAsUserRejectsInsecureRedirect(t *testing.T) {
 			requests++
 			switch requests {
 			case 1:
-				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","download_url":"https://files.example.test/object?signature=secret"}}`), nil
+				return jsonResponse(`{"code":0,"success":true,"data":{"file_id":"file-1","download_url":"https://files.example.test/tenant/contract%20copy.pdf?X-Tos-Expires=300&X-Tos-Credential=test%2Fscope&X-Tos-Signature=secret&response-content-disposition=attachment%3B%20filename%3Da%2Bb.pdf"}}`), nil
 			case 2:
 				return &http.Response{
 					StatusCode: http.StatusFound,
@@ -385,9 +387,10 @@ func TestContractDownloadFileAsUserDoesNotForwardSignedURLAsRedirectReferer(t *t
 					t.Fatalf("redirect forwarded credentials: %v", req.Header)
 				}
 				return &http.Response{
-					StatusCode: http.StatusOK,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(strings.NewReader("download bytes")),
+					StatusCode:    http.StatusOK,
+					ContentLength: -1, // No Content-Length in this fixture; exercise metadata fallback.
+					Header:        make(http.Header),
+					Body:          io.NopCloser(strings.NewReader("download bytes")),
 				}, nil
 			default:
 				t.Fatalf("unexpected request %d", requests)

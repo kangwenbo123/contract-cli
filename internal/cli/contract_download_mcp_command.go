@@ -205,6 +205,10 @@ func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, exp
 		}
 		return fmt.Errorf("copy signed file download: response stream failed")
 	}
+	// Prefer the actual storage response length; stored FileInfo sizes can be stale.
+	if response.ContentLength >= 0 {
+		expectedSize = &response.ContentLength
+	}
 	if expectedSize != nil && written != *expectedSize {
 		a.logger.Error("signed contract file size mismatch", "host", parsedURL.Hostname(), "expected_size", *expectedSize, "actual_size", written)
 		return fmt.Errorf("signed file download size mismatch: expected %d bytes, got %d", *expectedSize, written)

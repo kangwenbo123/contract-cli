@@ -604,8 +604,10 @@ func addContractHelp(registry map[string]helpTopic) {
 			"contract-cli contract upload-file --profile contract --as app --file ./附件.pdf --file-type attachment --file-name 附件.pdf",
 		},
 		Notes: []string{
-			"user/app 均走 POST /open-apis/contract/v1/files/upload。",
-			"请求使用 multipart/form-data，字段为 file_name、file_type、file。",
+			"支持 user/app；user 上传 reviewAttachment / approveAttachment 自动完成 MCP prepare、content、commit，成功后返回 file_id。",
+			"新评论/审批附件需由同一 user 上传，在 commit 后 30 分钟内使用；忽略 --user-id / --user-id-type。",
+			"app 和其他 user 类型走 POST /open-apis/contract/v1/files/upload。",
+			"请求使用 multipart/form-data；普通上传字段为 file_name、file_type、file，MCP content 仅传 file，文件须非空并符合服务端大小限制。",
 			"本地文件必须存在、是普通文件，大小 <= 200MB。",
 			"不接受 --input-file / --data；这两个参数只用于 JSON 请求体。",
 		},

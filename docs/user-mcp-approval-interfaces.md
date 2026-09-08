@@ -56,9 +56,9 @@ flowchart LR
 - 上述命令的 stderr 仅输出错误摘要，完整业务错误信息保留在 stdout；业务失败不会触发自动重试。app 命令和其他既有 user 命令保持原有响应处理方式，文件下载沿用专用校验且不输出下载元数据。
 - 审批意见 `--comment` 的日志值会脱敏；请求体仍发送完整意见。
 - 流程、任务、评论、合同和文件 ID 应按字符串传输和保存。
-- 部分响应中的 `tenant_id`、`contract_id`、`applicant_user_id` 等字段仍以 JSON Long 返回，可能超过 JavaScript 安全整数范围，前端或 Node.js 调用方应使用无损数字解析。
+- 当前接口中的 `tenant_id`、`contract_id`、`latest_process_event_sequence_id` 等长 ID 按 JSON String 返回；网关对外的人员 ID 也是 String，调用方不要转为 JavaScript Number。
 - `110125` 通常同时表示资源不存在、当前用户不可见或当前状态不可操作。调用方不应利用该错误枚举资源是否存在。
-- CLI 不在输出或日志中记录 Access Token、预签名下载地址等敏感信息。
+- CLI 不在输出或日志中记录 Access Token、临时上传/下载地址等敏感信息。
 
 ## 4. 查询审批流程实例详情
 
@@ -97,11 +97,13 @@ GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}
 | `process_definition_id` / `process_definition_key` | String | 流程定义标识 |
 | `instance_status` | String | 流程状态 |
 | `biz_key` | String | 关联业务单据标识，合同场景通常为合同 ID |
-| `initiator_id` | Long | 流程发起人 Lark ID |
+| `initiator_id` | String | 流程发起人开放平台 ID |
 | `start_time` / `end_time` | String | 毫秒时间戳字符串；未结束时 `end_time` 可能为空 |
 | `process_subject` / `process_name` | Object | `zh/en/ja` 多语言文案 |
 | `task_instance_list` | Object[] | 流程实际产生的任务实例 |
 | `notice_list` | Object[] | 知会记录 |
+| `complete` | Boolean | 返回信息是否完整；`false` 表示部分信息无法可靠还原 |
+| `limitations` | String[] | 不完整原因，调用方必须保留并展示 |
 
 任务实例的重点字段：
 
@@ -109,12 +111,14 @@ GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}
 |---|---|---|
 | `task_instance_id` | String | 后续审批动作使用的任务 ID |
 | `node_id` / `node_name` | String / Object | 节点标识和多语言名称 |
-| `assignee_ids` | Long[] | 审批人 Lark ID |
+| `assignee_ids` | String[] | 审批人开放平台 ID |
 | `assignee_user_ids` | String[] | 审批人开放平台 ID，可能不返回 |
 | `command_type` / `command_type_name` | String / Object | 审批动作及其多语言名称 |
 | `task_comment` | String | 审批意见，可能为空 |
 | `attachments` | Object[] | 审批附件，可能省略 |
 | `task_status` | Integer | 任务状态，无法补齐时不返回 |
+
+迁移流程可能以 `code=0` 返回部分成功：`data.process_instance.complete=false`，并通过 `limitations` 标识 `MIGRATED_TASK_STATUS_UNAVAILABLE` 或 `MIGRATED_ATTACHMENTS_NOT_VERIFIABLE`。CLI 保留这些字段，不把部分成功改成失败；缺失状态或附件不等于任务已结束或没有附件。
 
 `task_status` 枚举：`0` 运行中、`1` 已完成、`2` 已拒绝、`3` 已撤回、`4` 已撤销、`5` 自动终止。字段缺失时表示状态未知，不要根据 `end_time`、`command_type` 或审批意见推断。
 
@@ -179,7 +183,7 @@ Content-Type: application/json
 | Body | `content` | String | 否 | 普通正文；存在 @ 用户时不需要手工拼接 `@姓名` |
 | Body | `parent_comment_id` | String | 否 | 被回复的评论 ID；不传时创建一级评论 |
 | Body | `user_id` | String[] | 否 | 被 @ 用户列表，类型由 `user_id_type` 决定 |
-| Body | `file_ids` | String[] | 否 | 已上传到合同系统的附件 ID |
+| Body | `file_ids` | String[] | 否 | 当前用户新上传并提交的 `reviewAttachment`，或当前合同中该用户可见的已有文件 ID |
 | Body | `task_instance_id` | String | 否 | 仅用于评论通知跳转兜底 |
 
 字段名固定为 `user_id`，且值必须为数组；不能使用 `user_ids`、`at_user_ids` 或 `at_info_list` 代替。接口会按数组顺序生成 @ 用户文本及位置。
@@ -246,9 +250,9 @@ CLI 为常用字段提供 `--query`、`--task-type todo|done|notice`、`--page-i
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `contract_id` | Long | 合同 ID，注意 JavaScript 精度 |
+| `contract_id` | String | 合同 ID，保持字符串 |
 | `contract_name` / `contract_number` | String | 合同标题和单号 |
-| `applicant_user_id` | Long | 申请人 Lark ID |
+| `applicant_user_id` | String | 申请人开放平台 ID |
 | `task_instance_id` | String | 审批任务 ID；知会任务为空 |
 | `notice_id` | String | 知会 ID；待办、已办任务为空 |
 | `task_type` | Integer | `0` 待办、`1` 已办、`2` 抄送/知会 |
@@ -284,7 +288,7 @@ Content-Type: application/json
 | `file_ids` | String[] | 否 | `approveAttachment` 类型的审批附件 ID |
 | `archive_number` | String | 否 | 兼容保留字段；MCP 当前不处理归档节点，无需传入 |
 
-`file_ids` 中每个 ID 必须是正整数，属于当前租户和当前审批业务，且上传类型为 `approveAttachment`；重复 ID 按首次出现顺序去重。
+`file_ids` 中每个 ID 必须是正整数且属于当前租户：可以是当前用户通过 MCP 上传且 commit 后未超过 30 分钟的 `approveAttachment`，也可以是已关联当前审批业务的 `approveAttachment`；重复 ID 按首次出现顺序去重。
 
 通过示例：
 
@@ -339,15 +343,17 @@ GET /open-apis/contract/v1/mcp/contracts/{contract_id}/files/{file_id}/download
 |---|---|---|
 | `data.file_id` | String | 文件 ID |
 | `data.file_name` | String | 文件名称 |
-| `data.file_size` | Long | 文件大小，字节 |
+| `data.file_size` | Long | 文件记录中的大小，字节；历史记录可能与当前下载对象不一致 |
 | `data.mime_type` | String | MIME 类型 |
 | `data.file_type` | String | 文件业务类型 |
 | `data.expires_in_seconds` | Integer | 下载地址有效期，固定 `300` 秒 |
-| `data.download_url` | String | 对象存储预签名地址 |
+| `data.download_url` | String | TOS 临时预签名 URL |
+
+CLM 在签发地址前校验当前用户合同权限及文件归属，再通过对象存储生成 300 秒预签名 URL；不再提供应用层 ticket 兑换接口。CLI 应原样使用 URL，包括签名查询参数和转义字符，不拼接开放平台参数。
 
 获取成功响应后，应在有效期内直接访问 `download_url`。第二次请求不携带开放平台 `Authorization`；临时地址不得打印、持久化或转发给无权限人员。
 
-当前 CLI 会自动完成两段下载流程：校验 HTTPS 地址、发起无授权请求、检查响应和 `file_size`，普通文件模式先写同目录临时文件，完整成功后再提交目标文件。
+当前 CLI 会自动完成两段下载流程：校验 HTTPS 地址、发起无授权请求、检查 HTTP 状态和流完整性；优先按实际响应 `Content-Length`（包括 0）校验字节数，缺少该长度时回退到 `file_size`，普通文件模式先写同目录临时文件，完整成功后再提交目标文件。
 
 ```bash
 contract-cli contract download-file <file-id> \
@@ -364,6 +370,27 @@ contract-cli contract download-file <file-id> \
   --profile contract --as user --raw > 附件.pdf
 ```
 
+### 新评论、审批附件的上传前置流程
+
+`reviewAttachment` 和 `approveAttachment` 是上传用途，分别用于新评论附件和新审批附件；关联到合同业务后，两者都使用上述统一下载接口。
+
+```bash
+contract-cli contract upload-file --profile contract --as user --file ./评论附件.pdf --file-type reviewAttachment
+contract-cli contract upload-file --profile contract --as user --file ./审批附件.pdf --file-type approveAttachment
+```
+
+CLI 对这两类 user 上传自动执行：
+
+1. `POST /open-apis/contract/v1/mcp/files/upload_sessions/prepare`，以当前 user Token 发送 `file_name`、`file_type`；响应包含 `upload_id`、`upload_url`、`upload_method`、`upload_headers`、`expires_at`、`max_size`。
+2. 校验有效期、服务端大小限制，以及当前协议的 HTTPS、POST 和空 headers，向临时 `upload_url` 发送仅含 `file` 的 multipart 流；不携带 Authorization/Cookie，不跟随重定向。
+3. `POST /open-apis/contract/v1/mcp/files/upload_sessions/commit`，以同一 user 身份发送 `upload_id`。只有 commit 业务成功且有有效 `file_id` 才输出最终响应。
+
+文件必须非空，并满足 CLI 的 200MB 与服务端 `max_size` 限制。任一步失败即停止，不自动重试，也不输出临时地址、会话 ID 或未确认的文件 ID。网络/5xx 或上传后响应无法确认时提示“执行结果不确定”；不要直接提交评论/审批，应先确认上传结果或重新准备附件。
+
+新附件授权要求同租户、同用户，commit 后有效期为 30 分钟。普通 app 上传不能代替这项 user 授权。已有当前合同可见文件可复用于评论；已有当前审批业务的 `approveAttachment` 可复用于审批，无需为复用而重复上传。
+
+app 上传及 user 的其他 `file_type` 继续使用原 `POST /open-apis/contract/v1/files/upload`；这两类 MCP 上传不使用 `--user-id` / `--user-id-type` 指定调用人。
+
 ## 10. 错误码汇总
 
 | 业务码 | 典型场景 | 建议 |
@@ -371,7 +398,7 @@ contract-cli contract download-file <file-id> \
 | `110000` | 任务查询或处理参数非法 | 检查任务类型、分页、action、comment 和附件 ID |
 | `110001` | 下载接口没有有效个人登录身份 | 重新完成 user 授权 |
 | `110002` | 系统、BPM 或文件存储链路异常 | 读接口可稍后重试；写接口先查询状态 |
-| `110004` | 无法解析个人调用人 | 检查是否使用有效 `user_access_token` |
+| `110004` | 个人身份无效，或附件不满足当前用户授权/业务归属要求 | 检查 user Token、上传用途、同用户 commit、30 分钟有效期和已有文件归属 |
 | `110125` | 流程、合同、文件、任务不存在、不可见或不可操作 | 重新查询本人可见资源，不区分不存在和无权限 |
 | `110507` | 盖章或归档任务不支持 MCP 审批 | 转到合同系统页面处理 |
 | `110509` | 合同、流程或下游状态不允许该动作 | 根据返回信息检查最新状态 |
@@ -390,7 +417,7 @@ contract-cli contract download-file <file-id> \
 | 个人任务列表 | 虽是 POST，仍声明为读取操作，临时网络错误最多自动重试一次 |
 | 创建评论 | 非幂等写入，不自动重试；网络错误或 5xx 返回“执行结果不确定” |
 | 任务通过/拒绝 | 非幂等写入，不自动重试；网络错误或 5xx 返回“执行结果不确定” |
-| 预签名地址的二次文件请求 | 不携带 Token，不输出 URL；失败后重新执行命令获取新地址 |
+| TOS 临时预签名 URL 的二次文件请求 | 不携带 Token，不输出 URL；失败后重新执行命令获取新地址 |
 
 ## 12. 联调检查清单
 
@@ -398,7 +425,9 @@ contract-cli contract download-file <file-id> \
 - 验证当前用户对合同、流程或任务确实可见，不向调用方区分“不存在”和“无权限”。
 - 所有长 ID 使用字符串或无损整数处理，避免 JavaScript 精度丢失。
 - 评论 @ 用户时确认 `user_id_type` 与 `user_id` 数组一致。
-- 审批附件先按 `approveAttachment` 上传，并确认属于当前审批业务。
+- 新评论附件按 `reviewAttachment`、新审批附件按 `approveAttachment` 用同一 user 身份上传；使用 commit 返回的 `file_id`，在 30 分钟内提交评论/审批。已有附件按当前业务可见性与类型校验。
 - 只对普通审批节点调用 approve/reject；盖章和归档节点转页面处理。
 - 写操作超时后先查询，不盲目重复提交。
 - 下载地址仅短期使用，不进入日志、数据库、缓存或对外响应。
+
+流程详情与个人任务列表的 user 请求固定携带 `user_id_type=user_id`，与合同查询一致，避免网关缺省 `open_id` 与组织服务人员 ID 转换不兼容。该参数决定响应人员 ID 类型，不改变当前用户身份或权限。

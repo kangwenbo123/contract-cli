@@ -797,6 +797,12 @@ func (a *App) runContractUploadFile(ctx context.Context, args []string) error {
 	}
 	defer file.Close()
 
+	if requestContext.Identity == config.IdentityUser && (fileType == "reviewAttachment" || fileType == "approveAttachment") {
+		return a.runContractUploadAttachmentAsUser(ctx, contractsvc.NewService(client), requestContext, options, contractsvc.UploadFileInput{
+			FileName: fileName, FileType: fileType, File: file,
+		}, fileInfo.Size())
+	}
+
 	response, err := contractsvc.NewService(client).UploadFile(ctx, requestContext, contractsvc.UploadFileInput{
 		FileName: fileName,
 		FileType: fileType,

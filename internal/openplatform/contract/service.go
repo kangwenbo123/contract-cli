@@ -512,7 +512,34 @@ func (s *Service) do(ctx context.Context, requestContext openplatform.RequestCon
 	})
 }
 
-func multipartUploadBody(input UploadFileInput) (io.Reader, string) {
+func (s *Service) PrepareFileUpload(ctx context.Context, requestContext openplatform.RequestContext, body []byte) (openplatform.Response, error) {
+	requestContext.CommonQuery = nil
+	return s.client.Do(ctx, requestContext, openplatform.Request{
+		Method:         http.MethodPost,
+		Path:           "/open-apis/contract/v1/mcp/files/upload_sessions/prepare",
+		Body:           body,
+		IdentityPolicy: openplatform.IdentityPolicyUserOnly,
+		OperationKind:  openplatform.OperationWrite,
+	})
+}
+
+func (s *Service) CommitFileUpload(ctx context.Context, requestContext openplatform.RequestContext, body []byte) (openplatform.Response, error) {
+	requestContext.CommonQuery = nil
+	return s.client.Do(ctx, requestContext, openplatform.Request{
+		Method:         http.MethodPost,
+		Path:           "/open-apis/contract/v1/mcp/files/upload_sessions/commit",
+		Body:           body,
+		IdentityPolicy: openplatform.IdentityPolicyUserOnly,
+		OperationKind:  openplatform.OperationWrite,
+	})
+}
+
+// UploadSessionContentBody streams the file part; prepare already supplied its metadata.
+func UploadSessionContentBody(fileName string, file io.Reader) (io.ReadCloser, string) {
+	return multipartUploadBody(UploadFileInput{FileName: fileName, File: file})
+}
+
+func multipartUploadBody(input UploadFileInput) (io.ReadCloser, string) {
 	reader, writer := io.Pipe()
 	multipartWriter := multipart.NewWriter(writer)
 	return &lazyMultipartUploadReader{
@@ -554,11 +581,13 @@ func (r *lazyMultipartUploadReader) Close() error {
 }
 
 func writeUploadMultipart(writer *multipart.Writer, input UploadFileInput) error {
-	if err := writer.WriteField("file_name", input.FileName); err != nil {
-		return fmt.Errorf("write file_name field: %w", err)
-	}
-	if err := writer.WriteField("file_type", input.FileType); err != nil {
-		return fmt.Errorf("write file_type field: %w", err)
+	if input.FileType != "" {
+		if err := writer.WriteField("file_name", input.FileName); err != nil {
+			return fmt.Errorf("write file_name field: %w", err)
+		}
+		if err := writer.WriteField("file_type", input.FileType); err != nil {
+			return fmt.Errorf("write file_type field: %w", err)
+		}
 	}
 	part, err := writer.CreateFormFile("file", input.FileName)
 	if err != nil {

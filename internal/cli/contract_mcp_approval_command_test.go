@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -34,7 +35,7 @@ func TestContractMCPApprovalCommandsUseUserEndpoints(t *testing.T) {
 			args:         []string{"contract", "approval", "get", "process-1", "--profile", "contract", "--as", "user", "--notice-filter", "notice_filter", "--task-instance-filter", "task_instance_filter"},
 			wantMethod:   http.MethodGet,
 			wantPath:     "/open-apis/contract/v1/mcp/process_instances/process-1",
-			wantQuery:    "notice_filter=notice_filter&task_instance_filter=task_instance_filter",
+			wantQuery:    "notice_filter=notice_filter&task_instance_filter=task_instance_filter&user_id_type=user_id",
 			responseBody: `{"code":0,"data":{"process_instance_id":"process-1"}}`,
 		},
 		{
@@ -58,6 +59,7 @@ func TestContractMCPApprovalCommandsUseUserEndpoints(t *testing.T) {
 			args:         []string{"contract", "approval", "task", "list", "--profile", "contract", "--as", "user", "--query", "采购合同", "--task-type", "done", "--page-index", "2", "--page-size", "50"},
 			wantMethod:   http.MethodPost,
 			wantPath:     "/open-apis/contract/v1/mcp/tasks",
+			wantQuery:    "user_id_type=user_id",
 			wantBody:     `{"page_index":2,"page_size":50,"query":"采购合同","task_type_code":1}`,
 			responseBody: `{"code":0,"data":{"items":[]}}`,
 		},
@@ -283,3 +285,50 @@ type temporaryApprovalNetworkError struct{}
 func (temporaryApprovalNetworkError) Error() string   { return "temporary network error" }
 func (temporaryApprovalNetworkError) Timeout() bool   { return true }
 func (temporaryApprovalNetworkError) Temporary() bool { return true }
+
+func TestContractMCPApprovalPreservesPartialSuccessAndStringIDs(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		wantErr    bool
+	}{
+		{"partial process with string IDs", `{"code":0,"success":true,"data":{"process_instance":{"tenant_id":"9223372036854775807","complete":false,"limitations":["MIGRATED_ATTACHMENTS_NOT_VERIFIABLE"],"task_instance_list":[]}}}`, false},
+		{"downstream unavailable", `{"code":110002,"success":false,"msg":"MCP_DOWNSTREAM_UNAVAILABLE"}`, true},
+	} {
+		for _, format := range []string{"json", "yaml", "raw"} {
+			t.Run(tc.name+"/"+format, func(t *testing.T) {
+				store := config.NewStore(t.TempDir())
+				if err := store.UpsertProfile(uploadProfile(config.IdentityUser), true); err != nil {
+					t.Fatal(err)
+				}
+				stdout := &bytes.Buffer{}
+				requests := 0
+				app := cli.New(cli.Options{Store: store, Stdout: stdout, Stderr: io.Discard, HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { requests++; return jsonResponse(tc.body), nil })}})
+				args := []string{"contract", "approval", "get", "process-1", "--profile", "contract", "--as", "user"}
+				if format == "raw" {
+					args = append(args, "--raw")
+				} else {
+					args = append(args, "--output", format)
+				}
+				err := app.Run(context.Background(), args)
+				if (err != nil) != tc.wantErr || requests != 1 {
+					t.Fatalf("error=%v requests=%d", err, requests)
+				}
+				if !tc.wantErr {
+					if !strings.Contains(stdout.String(), "9223372036854775807") || !strings.Contains(stdout.String(), "MIGRATED_ATTACHMENTS_NOT_VERIFIABLE") {
+						t.Fatalf("lost ID/completeness fields: %s", stdout.String())
+					}
+					if format == "json" {
+						var body map[string]any
+						if err := json.Unmarshal(stdout.Bytes(), &body); err != nil {
+							t.Fatal(err)
+						}
+						data := body["data"].(map[string]any)["process_instance"].(map[string]any)
+						if data["complete"] != false {
+							t.Fatal("lost partial flag")
+						}
+					}
+				}
+			})
+		}
+	}
+}

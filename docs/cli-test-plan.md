@@ -730,8 +730,8 @@ POST /open-apis/contract/v1/files
 检查点：
 
 - `download-file` 支持 user/app，不支持 `dowload-file` 拼写；user 身份必须传 `--contract`。
-- user 身份先获取 JSON 元数据，再无 Authorization 访问 300 秒预签名地址；日志和输出不得出现该地址。
-- user 文件保存失败时不得破坏已有目标文件或遗留未完成的新文件；完整下载并校验 `file_size` 后才提交，且需覆盖硬链接不可用时的独占创建降级路径。
+- user 身份先获取 JSON 元数据，再无 Authorization 访问 300 秒TOS 临时预签名 URL；日志和输出不得出现该地址。
+- user 文件保存失败时不得破坏已有目标文件或遗留未完成的新文件；完整下载并优先按实际 `Content-Length` 校验长度（缺失时回退到 `file_size`）后才提交，且需覆盖硬链接不可用时的独占创建降级路径。
 - 不传 `--output-file` 且不传 `--raw` 时，CLI 默认拉起保存文件弹窗。
 - 无 GUI、远程、CI、Agent 环境下，保存弹窗失败时不应发 HTTP，并提示改用 `--output-file`。
 - `--output-file` 文件已存在时默认失败，加 `--force` 才覆盖。
@@ -1475,7 +1475,7 @@ contract-cli skills install --force
 
 ## 15. 文件上传命令专项测试
 
-本模块覆盖 `contract-cli contract upload-file`。当前 user/app 身份均支持，调用同一个开放平台上传接口。
+本模块覆盖 `contract-cli contract upload-file`。当前 user/app 身份均支持。app 和 user 普通类型继续调用原上传接口；user 的 `reviewAttachment` / `approveAttachment` 自动执行 MCP prepare → content → commit。
 
 ### 15.1 正向上传
 
@@ -1642,3 +1642,14 @@ contract-cli payment get "$PAYMENT_ID" --contract "$CONTRACT_ID" --profile "$PRO
 - JSON/YAML 输出保留 Long ID 精度，raw 保留原始响应；输出写入失败必须向上传递。
 - `--comment <text>` 和 `--comment=<text>` 在 approve/reject 命令的日志中均被脱敏，HTTP 请求中的意见保持完整。
 - app 下载、app 审批详情及既有 user 合同详情的响应行为保持不变；原有 Token 刷新和网络重试测试继续通过。
+
+### 16.6 新附件上传授权与下载长度回归
+
+- user 显式/默认身份分别上传 `reviewAttachment`、`approveAttachment`，确认只有 prepare/commit 携带 user Token，content 仅有 multipart `file`；最终输出为 commit 的 `data.file_id`，JSON/YAML/raw 不丢失长 ID。
+- 用同一用户将新文件 ID 分别传入评论 `file_ids` 和审批 `--file-id`；验证其他用户、普通 app 上传、commit 后超过 30 分钟且未关联业务的文件不能借此绕过权限。
+- 验证已有当前合同可见文件仍可复用于评论，已有当前审批业务的 `approveAttachment` 仍可复用于审批。
+- prepare 非成功、参数缺失、非 HTTPS、非 POST、非空上传 headers、过期及大小超限均不得发送文件；content 失败不得 commit，commit 失败不得输出文件 ID。
+- 三步分别覆盖业务失败、网络中断、5xx、取消；确认不自动重试、保留取消原因、不泄露上传会话 URL/ID/Token；临时 content 地址重定向应失败。
+- 保持 app 上传全部类型、user 普通类型的旧接口行为；空 MCP 附件在发送前失败，multipart 仍采用流式处理。
+- 实际下载 `Content-Length` 优先于历史 `file_size`，覆盖实际长度为 0、元数据为 0、历史加密大小不同；无 Content-Length 时回退到元数据。流截断、404/503 均不得替换旧文件，临时文件必须清理。
+- `complete=false` / `limitations` 部分成功与长字符串 ID 在 JSON/YAML/raw 下保留；`110002` 返回非零退出且不按业务错误自动重试。
