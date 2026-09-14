@@ -81,6 +81,8 @@ contract-cli contract upload-file --profile contract --as user --file ./审批�
 
 ## 统一文件下载
 
+用户要求全部文件时，按 [下载合同全部文件到指定目录](download-all-files.md) 编排合同详情、表单、多个流程和评论树的文件收集、去重及逐个下载；不要只下载当前评论或任务附件。
+
 user 身份下载必须同时提供合同 ID 和文件 ID。MCP 接口返回元数据和 300 秒有效的TOS 临时预签名 URL（`download_url`），CLI 会立即进行第二次无 Authorization 请求并写入文件，不会打印、持久化或记录该临时地址。
 
 ```bash
