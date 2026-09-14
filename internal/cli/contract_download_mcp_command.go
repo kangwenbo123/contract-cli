@@ -13,6 +13,7 @@ import (
 
 	"cn.qfei/contract-cli/internal/openplatform"
 	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
+	"cn.qfei/contract-cli/internal/output"
 )
 
 const maxSignedDownloadRedirects = 10
@@ -29,7 +30,7 @@ type contractFileDownloadEnvelope struct {
 	} `json:"data"`
 }
 
-func (a *App) runContractDownloadFileAsUser(ctx context.Context, service *contractsvc.Service, requestContext openplatform.RequestContext, contractID string, fileID string, outputFile string, raw bool, force bool) error {
+func (a *App) runContractDownloadFileAsUser(ctx context.Context, service *contractsvc.Service, requestContext openplatform.RequestContext, contractID string, fileID string, outputFile string, raw bool, force bool, format output.Format) error {
 	a.logger.Info("resolve user contract file download", "contract_id", contractID, "file_id", fileID)
 	outputPath, err := a.resolveContractDownloadPath(ctx, fileID, outputFile, raw, force)
 	if err != nil {
@@ -51,8 +52,33 @@ func (a *App) runContractDownloadFileAsUser(ctx context.Context, service *contra
 	if err := a.downloadSignedContractFileToPath(ctx, metadata.Data.DownloadURL, metadata.Data.FileSize, outputPath, force); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(a.stdout, "Downloaded file to %s\n", outputPath)
-	return nil
+	return a.renderDownloadedFile(format, contractID, fileID, metadata.Data.FileName, outputPath)
+}
+
+func (a *App) renderDownloadedFile(format output.Format, contractID, fileID, fileName, outputPath string) error {
+	if format == "" {
+		_, err := fmt.Fprintf(a.stdout, "Downloaded file to %s\n", outputPath)
+		return err
+	}
+	absolutePath, err := filepath.Abs(outputPath)
+	if err != nil {
+		return fmt.Errorf("resolve downloaded file path: %w", err)
+	}
+	info, err := os.Stat(absolutePath)
+	if err != nil {
+		return fmt.Errorf("inspect downloaded file: %w", err)
+	}
+	if fileName == "" {
+		fileName = filepath.Base(absolutePath)
+	}
+	result := map[string]any{
+		"file_id": fileID, "file_name": fileName, "output_path": absolutePath,
+		"file_size": info.Size(),
+	}
+	if contractID != "" {
+		result["contract_id"] = contractID
+	}
+	return output.NewRenderer(a.stdout).WithNotice(a.updateNotice).Render(format, result)
 }
 
 func decodeContractFileDownloadMetadata(body []byte) (contractFileDownloadEnvelope, error) {

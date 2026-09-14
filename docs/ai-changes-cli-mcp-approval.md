@@ -1,5 +1,14 @@
 # AI 变更记录：CLI MCP 审批支持
 
+## 2026-09-14（下载结构化结果及字节单位实测）
+
+- 改动内容：下载命令显式指定 `--output json|yaml|table` 时返回 `file_id`、`file_name`、绝对路径 `output_path`、实际落盘字节数 `file_size`；user 另含 `contract_id`。
+- 影响范围：`internal/cli/contract_command.go`、`contract_download_mcp_command.go`、`help.go` 及 `contract_download_result_test.go`；user/app 下载均支持结构化结果。
+- 关键决策：大小统一使用 B（字节），不再使用 `file_size_mb`；不输出临时 URL；默认文本提示保持不变，`--raw` 与 `--output` 互斥。
+- 验证结果：先补测试复现旧输出不符合 JSON/YAML 契约，再修改实现；相关 CLI、输出及开放平台测试、`go vet` 通过，恢复字节单位后 CLI/输出测试再次通过。
+- 实测结果：将当前下载代码编入隔离 dev 测试程序，正文 10,116 B、审批附件 623 B 分别以 JSON/YAML 下载，4/4 成功；`file_size` 与实际大小一致、路径正确、同文件哈希一致，无临时链接及 MB 字段。
+- 未处理项或风险项：app 结构化输出已做模拟测试，未做本轮线上 app 实测；本次未修改产品文档、未提交。
+
 ## 2026-09-14（审批附件必须具有上传凭据）
 - 改动内容：删除审批附件依赖已有业务关系放行的路径，要求同用户有效 commit 凭据；同步接口说明与 CLI Skill。
 - 影响范围：MCP 审批附件来源校验；评论复用及文件下载规则保持不变。

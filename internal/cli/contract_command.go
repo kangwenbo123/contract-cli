@@ -11,6 +11,7 @@ import (
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/openplatform"
 	contractsvc "cn.qfei/contract-cli/internal/openplatform/contract"
+	"cn.qfei/contract-cli/internal/output"
 )
 
 const contractMCPPathPrefix = "/open-apis/contract/v1/mcp"
@@ -324,6 +325,13 @@ func (a *App) runContractDownloadFile(ctx context.Context, args []string) error 
 		return fmt.Errorf("contract download-file does not accept --input-file or --data")
 	}
 
+	format := output.Format(parsed.String("--output"))
+	if format != "" && format != output.FormatJSON && format != output.FormatYAML && format != output.FormatTable {
+		return fmt.Errorf("unsupported output format %q", format)
+	}
+	if options.raw && parsed.HasValue("--output") {
+		return fmt.Errorf("--raw cannot be combined with --output for file downloads")
+	}
 	fileID := parsed.positionals[0]
 	client, requestContext, err := a.openPlatformClientAndContextForOptions(options, contractOpenAPIPathPrefix+"/files/"+fileID, openplatform.IdentityPolicyAny)
 	if err != nil {
@@ -334,7 +342,7 @@ func (a *App) runContractDownloadFile(ctx context.Context, args []string) error 
 		if contractID == "" {
 			return fmt.Errorf("--contract is required with --as user")
 		}
-		return a.runContractDownloadFileAsUser(ctx, contractsvc.NewService(client), requestContext, contractID, fileID, parsed.String("--output-file"), options.raw, parsed.Bool("--force"))
+		return a.runContractDownloadFileAsUser(ctx, contractsvc.NewService(client), requestContext, contractID, fileID, parsed.String("--output-file"), options.raw, parsed.Bool("--force"), format)
 	}
 
 	writer, outputPath, closeOutput, err := a.contractDownloadWriter(ctx, strings.TrimSpace(fileID), parsed.String("--output-file"), options.raw, parsed.Bool("--force"))
@@ -342,14 +350,25 @@ func (a *App) runContractDownloadFile(ctx context.Context, args []string) error 
 		return err
 	}
 	if closeOutput != nil {
-		defer closeOutput()
+		defer func() {
+			if closeOutput != nil {
+				_ = closeOutput()
+			}
+		}()
 	}
 
 	if _, err := contractsvc.NewService(client).DownloadFile(ctx, requestContext, fileID, writer); err != nil {
 		return err
 	}
+	if closeOutput != nil {
+		closeErr := closeOutput()
+		closeOutput = nil
+		if closeErr != nil {
+			return fmt.Errorf("close download output file: %w", closeErr)
+		}
+	}
 	if !options.raw {
-		_, _ = fmt.Fprintf(a.stdout, "Downloaded file to %s\n", outputPath)
+		return a.renderDownloadedFile(format, "", fileID, filepath.Base(outputPath), outputPath)
 	}
 	return nil
 }
