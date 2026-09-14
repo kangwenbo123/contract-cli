@@ -57,7 +57,7 @@ contract-cli contract approval task list --profile contract --as user --data '{"
 
 - approve 的 `--comment` 可选；reject 的 `--comment` 必填且不能为空白。
 - `--comment` 在日志中脱敏，发送给接口的审批意见保持完整。
-- `--file-id` 可重复，按 `file_ids: String[]` 传入；必须是正整数：使用当前用户通过 MCP 上传且 commit 后未超过 30 分钟的 `approveAttachment`，或已关联当前审批业务的 `approveAttachment`。
+- `--file-id` 可重复，按 `file_ids: String[]` 传入；必须是正整数：使用当前用户通过 MCP 上传且 commit 后未超过 30 分钟的 `approveAttachment`；不支持直接复用已有审批附件、正文、普通附件或评论附件，需要重新按上述流程上传。
 - CLI 不暴露 `archive_number`。盖章和归档节点不支持该接口，返回 `110507`，应转到合同系统页面处理。
 - 任务处理非幂等，成功后重复调用会变为不可操作。若返回“执行结果不确定”，先用 task list 或 approval get 查询状态。
 
@@ -72,7 +72,7 @@ contract-cli contract approval task reject <task-instance-id> --profile contract
 - `contract upload-file --as user` 对这两类文件自动完成 prepare → content → commit，成功后才返回可用于 `file_ids` 的文件 ID。新附件授权在 commit 后有效 30 分钟。
 - CLI 验证每一步业务状态、会话有效期与服务端大小限制；临时 content 请求只发送 multipart 文件，不带用户 Token/Cookie，不跟随重定向。失败不自动重试，也不输出会话信息或未确认文件 ID。
 - app 上传及 user 其他类型上传保持原接口；普通 app 上传不能代替同用户的 MCP 附件授权。
-- 已有当前合同可见文件可复用于评论；已有当前审批业务的 `approveAttachment` 可复用于审批，无需重复上传。
+- 已有当前合同可见文件可复用于评论；审批附件只接受当前用户通过 MCP 上传、已 commit 且授权未过期的 `approveAttachment`；已有业务文件必须重新上传。
 
 ```bash
 contract-cli contract upload-file --profile contract --as user --file ./评论附件.pdf --file-type reviewAttachment
