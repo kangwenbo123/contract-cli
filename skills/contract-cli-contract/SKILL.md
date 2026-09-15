@@ -80,7 +80,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - app V1 精确/组合搜索参数、约束和示例：读 [references/search-app-parameters.md](references/search-app-parameters.md)
 - app V2 编号模糊搜索参数、约束和示例：读 [references/search-v2-parameters.md](references/search-v2-parameters.md)
 - 合同详情和搜索响应字段：读 [references/contract-response-fields.md](references/contract-response-fields.md)
-- 按字段下载（归档文件、归档主文件、归档附件、合同主文件、合同附件、其他附件、自定义字段附件、盖章节点比对文件）或下载合同全部文件到目录：读 [references/download-all-files.md](references/download-all-files.md)，先确定字段范围和合同归属，再收集、去重并逐个下载；归档文件包含当前合同归档主文件和归档附件；页面“合同附件”对应 `contract_causes`，“其他附件”对应 `contract_attachments`；任务附件来源标明节点类型和名称，评论来源统一为“评论附件”
+- 按字段下载（归档文件、归档主文件、归档附件、合同主文件、合同附件、其他附件、自定义字段附件、盖章节点比对文件）或下载合同全部文件到目录：读 [references/download-all-files.md](references/download-all-files.md)，先确定字段范围和合同归属，再收集、去重并逐个下载；归档文件包含当前合同归档主文件和归档附件；页面“合同附件”对应 `contract_causes`，“其他附件”对应 `contract_attachments`；任务附件来源标明节点类型和名称，评论来源统一为“评论附件”；下载结果默认用表格展示文件名链接、来源、大小（B）三列；多个合同按合同分子目录、分表展示，最上方先写“本次共处理 X 个合同，Y 个文件，成功 A 个，失败 B 个，跳过 C 个”，再给各合同统计，表格前一行展示“**实际合同名称**（合同编号：…）”，不展示“合同名称：”标签，名称加粗，编号紧接其后置于括号内，多个合同的标题前按展示顺序添加从 1 开始的连续序号，相邻合同之间用上下留空行的水平分隔线隔开
 - 合同创建请求体与分类来源：先读 [references/category-fields.md](references/category-fields.md) 获取 `contract_category_abbreviation`，再读 [references/create-contract-fields.md](references/create-contract-fields.md)、[references/create-contract-field-tree.md](references/create-contract-field-tree.md)、[references/create-contract-enums.md](references/create-contract-enums.md)
 - 合同更新文件/归档字段：读 [references/patch-contract-fields.md](references/patch-contract-fields.md)
 - 模板列表和模板详情字段：读 [references/template-fields.md](references/template-fields.md)
