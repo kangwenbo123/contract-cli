@@ -188,6 +188,7 @@ var contractMCPToolSpecs = []ToolSpec{
 		ToolName:       "list-process-comments",
 		Method:         http.MethodGet,
 		Path:           "/open-apis/contract/v1/mcp/process_instances/{process_instance_id}/comments",
+		FixedQuery:     url.Values{"user_id_type": {"user_id"}},
 		IdentityPolicy: IdentityPolicyUserOnly,
 		OperationKind:  OperationRead,
 	},

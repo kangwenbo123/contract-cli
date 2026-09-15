@@ -125,7 +125,7 @@ func TestContractMCPToolSpecsIncludeApprovalWorkflow(t *testing.T) {
 			t.Errorf("spec %q = (%s, %s, %s), want (%s, %s, %s)", name, spec.Method, spec.Path, spec.OperationKind, expected.method, expected.path, expected.operation)
 		}
 		wantQuery := ""
-		if name == "get-process-instance" || name == "list-personal-tasks" {
+		if name == "get-process-instance" || name == "list-personal-tasks" || name == "list-process-comments" {
 			wantQuery = "user_id_type=user_id"
 		}
 		if spec.FixedQuery.Encode() != wantQuery {

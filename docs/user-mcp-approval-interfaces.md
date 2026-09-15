@@ -138,7 +138,7 @@ GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}/comments
 
 权限要求：当前用户具有审批实例关联合同的查看权限。
 
-接口没有 query 和分页参数，一次返回完整递归评论树。一级评论位于 `data.items`，回复位于每个评论的 `replies`，回复结构与一级评论相同。
+接口没有分页参数，一次返回完整递归评论树。CLI 固定携带 query `user_id_type=user_id`，统一响应人员 ID 类型；当前用户身份和权限仍由个人 Token 决定。一级评论位于 `data.items`，回复位于每个评论的 `replies`，回复结构与一级评论相同。
 
 ### 主要响应字段
 

@@ -43,6 +43,7 @@ func TestContractMCPApprovalCommandsUseUserEndpoints(t *testing.T) {
 			args:         []string{"contract", "approval", "comment", "list", "process-1", "--profile", "contract", "--as", "user"},
 			wantMethod:   http.MethodGet,
 			wantPath:     "/open-apis/contract/v1/mcp/process_instances/process-1/comments",
+			wantQuery:    "user_id_type=user_id",
 			responseBody: `{"code":0,"data":{"items":[]}}`,
 		},
 		{

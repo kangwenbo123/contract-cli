@@ -92,4 +92,4 @@ contract-cli contract download-file <file-id> --contract <contract-id> --profile
 
 评论、审批附件与其他文件共用此下载接口，上传用途不产生另一套下载入口。普通文件模式先写同目录临时文件，优先按实际响应 `Content-Length`（包括 0）校验长度，缺失时回退到元数据 `file_size`；流中断仍失败，完整成功后再提交；`--force` 只在完整下载成功后替换旧文件。不支持硬链接的文件系统会退化为独占创建，正常错误返回时会清理未完成的新文件。`--raw` 直接输出二进制，不能配 JSON/YAML 消费方式。
 
-流程详情与个人任务列表的 user 请求固定携带 `user_id_type=user_id`，与合同查询一致，避免网关缺省 `open_id` 与组织服务人员 ID 转换不兼容。该参数决定响应人员 ID 类型，不改变当前用户身份或权限。
+流程详情、评论查询与个人任务列表的 user 请求固定携带 `user_id_type=user_id`，与合同查询一致，避免网关缺省 `open_id` 与组织服务人员 ID 转换不兼容。该参数决定响应人员 ID 类型，不改变当前用户身份或权限。评论创建仍按 `--mention-id-type` 解释被 @ 用户 ID，不受查询默认值影响。
