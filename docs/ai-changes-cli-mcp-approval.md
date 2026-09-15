@@ -1,5 +1,13 @@
 # AI 变更记录：CLI MCP 审批支持
 
+## 2026-09-15（评论查询统一响应人员 ID 类型）
+
+- 改动内容：`list-process-comments` 固定携带 `user_id_type=user_id`，与流程详情、个人任务和合同查询一致。
+- 影响范围：MCP 命令配置、请求级回归测试、审批接口说明及对应 Skill 引用；当前用户身份和权限不变。
+- 关键决策：仅调整评论查询；评论创建仍保留 `--mention-id-type`，不覆盖被 @ 人员的 ID 类型。
+- 验证结果：新增请求参数断言先失败，修改后 `make test` 全部通过；创建评论显式 `open_id` 的请求测试同时通过。
+- 未处理项或风险项：未进行本轮线上接口回测；后端默认 `open_id` 兼容问题仍需独立处理；旧 Windows 包不包含本次修改，未提交或推送。
+
 ## 2026-09-14（下载结构化结果及字节单位实测）
 
 - 改动内容：下载命令显式指定 `--output json|yaml|table` 时返回 `file_id`、`file_name`、绝对路径 `output_path`、实际落盘字节数 `file_size`；user 另含 `contract_id`。
