@@ -1,6 +1,26 @@
-# 下载合同全部文件到指定目录
+# 按字段或全部范围下载合同文件到指定目录
 
-用户要求下载合同的全部文件时使用。由 Agent 编排现有 CLI 命令：查询合同详情 → 收集合同和表单文件 → 查询各流程的审批附件及评论树附件 → 按文件 ID 去重 → 逐个获取临时 URL 并下载。没有独立的批量下载命令；仅要求某个文件时按指定范围选择，不自动扩大为全部下载。
+用户要求下载指定字段、文件分类或合同全部文件时使用。由 Agent 编排现有 CLI 命令：查询合同详情 → 按用户指定范围收集文件 → 按文件 ID 去重 → 逐个获取临时 URL 并下载。全部文件范围还需查询各流程的审批附件及评论树附件。没有独立的批量下载命令。
+
+## 0. 确定字段范围
+
+以下路径相对于合同详情的 `data.contract`。先选择用户要求的字段，再收集该字段涵盖的全部文件；不要凭文件名猜分类，也不要将指定字段下载扩大为全部文件下载。
+
+| 用户要求 | 对应文件范围 |
+| --- | --- |
+| 归档文件／归档合同文件 | `contract_files.contract_scans[]` + `contract_files.contract_archive_attachments[]`，即归档合同主文件与归档合同附件的合集 |
+| 归档合同主文件／归档主合同文件／归档主文件／归档扫描件 | `contract_files.contract_scans[]` |
+| 归档合同附件／归档附件 | `contract_files.contract_archive_attachments[]` |
+| 合同主文件／合同正文／合同文本 | `contract_files.contract_text`（单个对象） |
+| 合同附件／普通合同附件 | `contract_files.contract_attachments[]` |
+| 某个自定义字段的附件，例如“付款凭证”字段 | 解析 `form`，定位该附件字段，收集其 `attribute_value[]` 中的文件，包含用户指定范围内的明细行和嵌套字段 |
+
+- 字段中有多个文件时全部收集，不能只取第一项或自行选择“最新”文件。用户限定文件名、版本或明细行时，在对应字段内进一步筛选；无法确定时展示候选并确认。
+- 自定义字段通过展示名、稳定字段标识、模块及明细行位置定位；同名字段无法区分时先确认。`contract_form_attachments[]` 和 `contract_template_custom_attachments[]` 是汇总分类，不能用整个汇总分类代替某个具体字段，也不能凭同名文件认定字段归属。
+- 用户未指明哪个自定义字段，且没有明确要求全部时，列出可见附件字段供确认；明确要求全部自定义字段附件时遍历所有已识别的附件字段，并结合汇总分类去重。
+- 所选字段已确认存在且值为空时，报告该字段无文件；字段缺失、不可见或结构无法解析时，报告无法确认，不以正文或其他分类补位。
+- 仅下载上述合同字段时，跳过第 2 节流程查询，按第 3、4 节处理选中项。明确要求合同全部文件时，执行第 1、2 节的完整收集；单独指定审批或评论附件时只查询对应来源。
+- 在选中范围内按 `file_id` 去重并保留所有来源字段；最终逐项返回实际来源。“归档文件”的结果应区分归档主文件与归档附件，成功数量只统计本次选中范围。
 
 ## 1. 读取合同和文件字段
 
@@ -14,11 +34,11 @@ contract-cli contract get <contract-id> --profile <profile> --as user --output j
 
 | 文件来源 | 文件项路径 |
 | --- | --- |
-| 正文 | `contract_files.contract_text`（对象，不是数组） |
+| 合同主文件／正文 | `contract_files.contract_text`（对象，不是数组） |
 | 签订依据 | `contract_files.contract_causes[]` |
 | 普通附件 | `contract_files.contract_attachments[]` |
-| 扫描件 | `contract_files.contract_scans[]` |
-| 归档附件 | `contract_files.contract_archive_attachments[]` |
+| 归档合同主文件／扫描件 | `contract_files.contract_scans[]` |
+| 归档合同附件 | `contract_files.contract_archive_attachments[]` |
 | 表单自定义附件 | `contract_files.contract_form_attachments[]` |
 | 模板自定义附件 | `contract_files.contract_template_custom_attachments[]` |
 | OCR 比对文件 | `contract_files.contract_ocr_comparisons[]` |
@@ -28,6 +48,8 @@ contract-cli contract get <contract-id> --profile <profile> --as user --output j
 `form` 是 JSON 字符串，先解析，再遍历字段及明细行。文件字段的 `attribute_value[]` 包含 `file_id`、`file_name` 等信息；结合 `attribute_type` 和实际字段结构确认文件值，保留字段名称、模块和行定位。多文件必须逐项收集，不能只取第一项；不要把任意 `id`、字段配置 ID、合同 ID 或 URL 当成文件 ID。嵌套对象/数组按实际结构遍历，不假设所有字段都在顶层；未知字段类型或无法解析的内容记录为清单不完整，不猜测字段值。
 
 ## 2. 收集流程与评论附件
+
+仅在用户要求全部文件或指定审批/评论附件时执行；按第 0 节确定查询范围。
 
 收集 `process_instance_ids[]`，并合入非空的 `process_instance_id`，按流程 ID 去重。后者是单个字符串；只有当前流程时只查询一次。不要用 `task_instance_id` 替代流程 ID，也不要为寻找流程枚举 ID。
 

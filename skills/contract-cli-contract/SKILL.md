@@ -80,7 +80,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - app V1 精确/组合搜索参数、约束和示例：读 [references/search-app-parameters.md](references/search-app-parameters.md)
 - app V2 编号模糊搜索参数、约束和示例：读 [references/search-v2-parameters.md](references/search-v2-parameters.md)
 - 合同详情和搜索响应字段：读 [references/contract-response-fields.md](references/contract-response-fields.md)
-- 下载合同全部文件到目录（含表单、各流程审批和评论回复附件）：读 [references/download-all-files.md](references/download-all-files.md)，按现有命令收集、去重并逐个下载
+- 按字段下载（归档文件、归档主文件、归档附件、合同主文件、合同附件、自定义字段附件）或下载合同全部文件到目录：读 [references/download-all-files.md](references/download-all-files.md)，先确定字段范围，再收集、去重并逐个下载；归档文件包含归档主文件和归档附件
 - 合同创建请求体与分类来源：先读 [references/category-fields.md](references/category-fields.md) 获取 `contract_category_abbreviation`，再读 [references/create-contract-fields.md](references/create-contract-fields.md)、[references/create-contract-field-tree.md](references/create-contract-field-tree.md)、[references/create-contract-enums.md](references/create-contract-enums.md)
 - 合同更新文件/归档字段：读 [references/patch-contract-fields.md](references/patch-contract-fields.md)
 - 模板列表和模板详情字段：读 [references/template-fields.md](references/template-fields.md)
