@@ -475,13 +475,6 @@ func TestStructuredUserOnlyMCPCommandRejectsAppIdentity(t *testing.T) {
 func TestLegacyMCPCommandNamesAreRejected(t *testing.T) {
 	t.Parallel()
 
-	store := config.NewStore(t.TempDir())
-	app := cli.New(cli.Options{
-		Stdout: &bytes.Buffer{},
-		Stderr: &bytes.Buffer{},
-		Store:  store,
-	})
-
 	testCases := [][]string{
 		{"vendor", "list"},
 		{"entity", "list"},
@@ -494,6 +487,12 @@ func TestLegacyMCPCommandNamesAreRejected(t *testing.T) {
 	for _, args := range testCases {
 		args := args
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Parallel()
+			app := cli.New(cli.Options{
+				Stdout: &bytes.Buffer{},
+				Stderr: &bytes.Buffer{},
+				Store:  config.NewStore(t.TempDir()),
+			})
 			err := app.Run(context.Background(), args)
 			if err == nil || !strings.Contains(err.Error(), "unknown command") {
 				t.Fatalf("unexpected legacy command error: %v", err)
