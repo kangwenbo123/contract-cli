@@ -2,8 +2,9 @@
 
 本页专用于 `contract-cli mdm vendor create`。
 
-- 接口：`POST /open-apis/mdm/v1/vendors`
-- 身份：仅 `app`
+- App 接口：`POST /open-apis/mdm/v1/vendors`
+- 个人接口：`POST /open-apis/contract/v1/mcp/vendors`
+- 身份：`app` 或 `user`
 - 请求体：JSON 必填，`--input-file` 与 `--data` 二选一
 - 官方 OpenAPI：[创建交易方](https://docs.qfei.cn/373499161e0.md)
 - 校验基线：`contract-cli` 当前分支；CLM `master@334c18fc2e` 存在对应实现时，以 Controller、DTO 和业务校验补充官方规格。
@@ -20,18 +21,23 @@
 
 | 参数 | 请求位置 | 类型 | 必填性 | 说明 |
 | --- | --- | --- | --- | --- |
-| --user-id | $query.user_id | string | 必填（CLI 本地校验） | 示例值："123123123123" |
+| --user-id | $query.user_id | string | app 必填，user 禁止 | app 当前操作人；user 操作人来自认证。 |
 | --user-id-type | $query.user_id_type | string | 可选，默认 `user_id` | 用户 ID 类型，参考 用户身份体系 |
+| --department-id-type | $query.department_id_type | enum | user 可选，app 禁止 | `department_id` 或 `open_department_id`；`ownerDepts` 传 `od-...` 时必须传 `open_department_id`。 |
 | --input-file | $body | JSON file | 二选一必填 | 从文件读取 JSON；与 `--data` 互斥。 |
 | --data | $body | JSON string | 二选一必填 | 内联 JSON；与 `--input-file` 互斥。 |
 | --profile | 本地上下文 | string | 可选 | 不传时使用当前 profile。 |
-| --as | 本地上下文 | enum | 可选 | 仅支持 `app`；不传时使用 profile 默认身份。 |
+| --as | 本地上下文 | enum | 可选 | `app` 或 `user`；不传时使用 profile 默认身份。 |
 | --output | CLI 输出 | enum | 可选 | `json`、`yaml` 或 `table`；默认 `json`。 |
 | --raw | CLI 输出 | boolean | 可选 | 原样输出服务端响应 body。 |
 
 ## 请求体字段
 
-字段名、类型和服务端必填性来自官方 OpenAPI；“CLI 必填/禁止”是结构化命令的额外本地校验。父对象可选时，其内部必填字段标记为“父对象存在时必填”。
+字段名、类型和服务端必填性来自 App V1 OpenAPI；“CLI 必填/禁止”是结构化命令的额外本地校验。父对象可选时，其内部必填字段标记为“父对象存在时必填”。个人创建使用相同字段族，但只允许租户中已启用且个人可编辑的字段，服务端生成编码并创建为启用。
+
+个人身份不允许传 `vendor`、`status`、风险字段和系统字段。个人创建不发起审批；手工编码租户不支持个人创建，外部主数据限制由服务端配置判断。
+
+个人创建不允许传 `vendorAccounts[].bankId`；该字段仅保留 App 创建的历史契约，不能据此绕过个人字段权限。
 
 | JSON 路径 | 类型 | 必填性 | 说明 |
 | --- | --- | --- | --- |
@@ -85,7 +91,7 @@
 | vendorAccounts[].account | string | 可选 | 账号<br>示例值："62448345986564434"<br>数据校验规则：最大长度：50 字符 |
 | vendorAccounts[].iban | string | 可选 | 国际银行账号<br>示例值："46677"<br>数据校验规则：最大长度：34 字符 |
 | vendorAccounts[].accountName | string | 可选 | 账户名<br>示例值："上海xxx技术有限（上海）分公司"<br>数据校验规则：<br>最大长度：1000 字符 |
-| vendorAccounts[].bankId | string | 可选 | 银行内部Id<br>示例值："MDBK00061195"<br>数据校验规则：<br>最大长度：100 字符 |
+| vendorAccounts[].bankId | string | app 可选，user 禁止 | 银行内部Id<br>示例值："MDBK00061195"<br>数据校验规则：<br>最大长度：100 字符 |
 | vendorAccounts[].bankCode | string | 可选 | 银联号<br>示例值："308290003732"<br>数据校验规则：<br>最大长度：100 字符 |
 | vendorAccounts[].swiftCode | string | 可选 | 银行Swift编码<br>示例值："BOFAUS3NINQ"<br>数据校验规则：最大长度：100 字符 |
 | vendorAccounts[].vendorSiteCode | string | 可选 | 交易方siteCode<br>示例值："99999999"<br>数据校验规则：<br>最大长度：100 字符 |
@@ -217,7 +223,7 @@
 - `vendorAccounts[].account`（string，可选）：账号<br>示例值："62448345986564434"<br>数据校验规则：最大长度：50 字符
 - `vendorAccounts[].iban`（string，可选）：国际银行账号<br>示例值："46677"<br>数据校验规则：最大长度：34 字符
 - `vendorAccounts[].accountName`（string，可选）：账户名<br>示例值："上海xxx技术有限（上海）分公司"<br>数据校验规则：<br>最大长度：1000 字符
-- `vendorAccounts[].bankId`（string，可选）：银行内部Id<br>示例值："MDBK00061195"<br>数据校验规则：<br>最大长度：100 字符
+- `vendorAccounts[].bankId`（string，仅 App 可选，个人禁止）：银行内部Id<br>示例值："MDBK00061195"<br>数据校验规则：<br>最大长度：100 字符
 - `vendorAccounts[].bankCode`（string，可选）：银联号<br>示例值："308290003732"<br>数据校验规则：<br>最大长度：100 字符
 - `vendorAccounts[].swiftCode`（string，可选）：银行Swift编码<br>示例值："BOFAUS3NINQ"<br>数据校验规则：最大长度：100 字符
 - `vendorAccounts[].vendorSiteCode`（string，可选）：交易方siteCode<br>示例值："99999999"<br>数据校验规则：<br>最大长度：100 字符
@@ -280,9 +286,10 @@
 
 ```bash
 contract-cli mdm vendor create --user-id <operator-user-id> --input-file request.json --profile contract --as app
+contract-cli mdm vendor create --profile contract --as user --department-id-type open_department_id --data '{"vendorText":"交易方A","ownerDepts":["od-xxx"]}'
 ```
 
-官方请求体示例（动态字段接口仍须以当前租户配置为准）：
+官方 App 请求体示例（动态字段接口仍须以当前租户配置为准；包含个人创建禁止的系统字段和 `bankId`，不得用于个人请求）：
 
 ```json
 {
@@ -497,4 +504,5 @@ contract-cli mdm vendor create --user-id <operator-user-id> --input-file request
 ## 来源差异说明
 
 - 官方规格路径：`POST /open-apis/mdm/v1/vendors`
+- 个人维护路径：`POST /open-apis/contract/v1/mcp/vendors`
 - 本页描述请求参数；响应 envelope 和输出格式遵循共享 Skill。
