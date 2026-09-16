@@ -69,6 +69,11 @@ func TestCommandReferenceDocumentCoversCurrentSupportedCommands(t *testing.T) {
 		"contract-cli contract cooperation file download",
 		"contract-cli contract approval start",
 		"contract-cli contract approval get",
+		"contract-cli contract approval comment list",
+		"contract-cli contract approval comment create",
+		"contract-cli contract approval task list",
+		"contract-cli contract approval task approve",
+		"contract-cli contract approval task reject",
 		"contract-cli contract category list",
 		"contract-cli contract template list",
 		"contract-cli contract template get",
@@ -102,7 +107,7 @@ func TestCommandReferenceDocumentCoversCurrentSupportedCommands(t *testing.T) {
 		"contract-cli event outbound-ip list",
 		"contract-cli rule table list",
 		"contract-cli rule table row create",
-		"`contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前仅有的十五个同时支持 `user` 与 `app` 的结构化业务命令",
+		"`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 `--as user`",
 		"`contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`",
 		"`contract share get/batch-create`、`contract cooperation link/record/search/file`",
 		"`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`",
@@ -169,7 +174,7 @@ func TestMergeConflictResolutionKeepsCommandDocsAndSkillsConsistent(t *testing.T
 		t.Fatalf("read contract skill: %v", err)
 	}
 	skillText := string(skillContent)
-	approvalDecision := "- 想发起流程审批或查询审批实例：用 `contract approval start|get --as app`"
+	approvalDecision := "- 想查询审批实例：用 `contract approval get --as user|app`"
 	if count := strings.Count(skillText, approvalDecision); count != 1 {
 		t.Fatalf("contract skill approval decision count = %d, want 1", count)
 	}

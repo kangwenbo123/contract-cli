@@ -5,9 +5,9 @@
 ## 当前状态
 
 - 当前仅内置 `prod` 环境预设；正式包默认使用 `prod`：`contract-cli config add --env prod --name contract`
-- `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前仅有的十五个同时支持 `user` 与 `app` 的结构化业务命令
-- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/download-file/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start/get`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`
-- 除上述双身份和 app-only 能力外，当前其他结构化业务命令仍只支持 `--as user`
+- `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前同时支持 `user` 与 `app` 的结构化业务命令
+- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`
+- `contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 `--as user`，调用人固定来自个人 Token
 - `app` 目前已经支持登录、状态查看、登出、默认身份切换
 - 推荐使用 `npx skills add qfeius/contract-cli -y -g` 安装跨 Agent 平台 skills；`contract-cli skills install` 保留为 CLI 内置兜底
 - `update check` 支持手动检查 npm 远端版本；默认输出文本，带 `--json` 时返回飞书式 JSON；CLI 会为符合条件的普通命令按 24 小时缓存检查远端版本，并在 JSON object 输出中注入 `_notice.update`
@@ -50,8 +50,8 @@ contract-cli contract get <contract-id> --help
 - 为兼容老用户脚本，旧身份值 `--as bot` 仍可使用，运行时等价于 `--as app`；新文档和示例统一使用 `app`
 - `contract ...`、`mdm ...` 结构化命令大多默认只支持 `--as user`
 - `/open-apis/contract/v1/mcp/...` 路径大多仍只支持 `--as user`
-- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract download-file`、`contract delete`、`contract print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start/get`、`payment *`、新增写入和扩展查询型 `mdm *`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`
-- `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是例外：
+- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、新增写入和扩展查询型 `mdm *`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`
+- `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是例外：
   - `contract get --as user` 走 MCP 路径 `/open-apis/contract/v1/mcp/contracts/{contract_id}`
   - `contract get --as app` 走开放平台路径 `/open-apis/contract/v1/contracts/{contract_id}`
   - `--as user` 走 MCP 路径 `/open-apis/contract/v1/mcp/contracts/search`
@@ -70,7 +70,7 @@ contract-cli contract get <contract-id> --help
   - `contract template get --as app` 走 `/open-apis/contract/v1/templates/{template_id}`
   - `contract template instantiate --as user` 走 `/open-apis/contract/v1/mcp/template_instances`
   - `contract template instantiate --as app` 走 `POST /open-apis/contract/v1/template_instances`
-  - `contract upload-file --as user` 与 `contract upload-file --as app` 均走 `POST /open-apis/contract/v1/files/upload`
+  - `contract upload-file --as user` 上传 `reviewAttachment` / `approveAttachment` 自动走 MCP prepare → content → commit；app 和其他 user 类型继续走 `POST /open-apis/contract/v1/files/upload`
   - `mdm vendor list --as user` 走 `/open-apis/contract/v1/mcp/vendors`
   - `mdm vendor list --as app` 走 `/open-apis/mdm/v1/vendors`
   - `mdm vendor get --as user` 走 `/open-apis/contract/v1/mcp/vendors/{vendor_id}`
@@ -721,8 +721,9 @@ contract-cli contract upload-file --profile contract --as app --file ./附件.pd
 身份规则：
 
 - `--as user` 和 `--as app` 均支持。
-- 走 `POST /open-apis/contract/v1/files/upload`。
-- 请求是 `multipart/form-data`，字段为 `file_name`、`file_type`、`file`。
+- user 上传 `reviewAttachment` / `approveAttachment` 自动执行 MCP prepare → content → commit，只在 commit 成功后输出文件 ID。临时 content 请求为仅含 `file` 的 multipart，不携带用户 Token。
+- app 和其他 user 类型走 `POST /open-apis/contract/v1/files/upload`，multipart 字段仍为 `file_name`、`file_type`、`file`。
+- 新评论/审批附件必须由同一 user 上传并在 commit 后 30 分钟内使用；已有文件的复用规则见 [MCP 附件说明](user-mcp-approval-interfaces.md#新评论审批附件的上传前置流程)。这两类 user 上传忽略 `--user-id` / `--user-id-type`，文件须非空且符合服务端 `max_size`。
 - 不接受 `--input-file` / `--data`；这两个参数只用于 JSON 请求体。
 
 本地校验：
@@ -733,6 +734,8 @@ contract-cli contract upload-file --profile contract --as app --file ./附件.pd
 
 常用 `file_type`：
 
+- `reviewAttachment`：评论新附件。
+- `approveAttachment`：审批新附件。
 - `text`：合同文本。
 - `attachment`：其他附件。
 - `scan`：归档扫描件。
@@ -814,7 +817,7 @@ contract-cli contract patch <contract-id> --profile contract --as app --data '{"
 
 #### `contract-cli contract download-file`
 
-用途：app 身份下载合同相关文件。
+用途：下载合同相关文件；app 身份直接获取二进制，user 身份通过 MCP 元数据中的短期地址获取二进制。
 
 命令：
 
@@ -822,6 +825,7 @@ contract-cli contract patch <contract-id> --profile contract --as app --data '{"
 contract-cli contract download-file <file-id> --profile contract --as app
 contract-cli contract download-file <file-id> --profile contract --as app --output-file ./contract.pdf
 contract-cli contract download-file <file-id> --profile contract --as app --raw > contract.pdf
+contract-cli contract download-file <file-id> --contract <contract-id> --profile contract --as user --output-file ./contract.pdf
 ```
 
 支持参数：
@@ -829,13 +833,15 @@ contract-cli contract download-file <file-id> --profile contract --as app --raw 
 - `--output-file`：保存到指定文件；不传时默认拉起保存文件弹窗。
 - `--force`：覆盖已存在的 `--output-file`。
 - `--raw`：把文件内容写到 stdout，不打印额外提示。
+- `--contract`：user 身份必填，指定文件所属合同；app 身份不需要。
 - `--user-id-type`
 - `--user-id`
 
 身份规则：
 
-- 当前仅支持 `--as app`。
-- 走 `GET /open-apis/contract/v1/files/{file_id}`。
+- `--as app` 走 `GET /open-apis/contract/v1/files/{file_id}`。
+- `--as user` 走 `GET /open-apis/contract/v1/mcp/contracts/{contract_id}/files/{file_id}/download`，CLI 随即访问 300 秒有效的 `download_url`；该地址不会输出、持久化或写入日志。
+- user 身份保存到文件时先写同目录临时文件，优先按实际响应 `Content-Length` 校验长度，缺失时回退到 `file_size`，完整下载后才替换或创建目标文件；不支持硬链接的文件系统会退化为独占创建，正常错误返回时会清理未完成的新文件，且不会覆盖已有目标文件。
 - 不实现 `dowload-file` 拼写别名。
 - 无 GUI、远程、CI、Agent 环境推荐显式传 `--output-file`。
 
@@ -1018,13 +1024,14 @@ contract-cli contract approval start <process-instance-id> --profile contract --
 
 #### `contract-cli contract approval get`
 
-用途：app 身份查询审批实例详情。
+用途：查询审批实例详情，按当前身份自动路由。
 
 命令：
 
 ```bash
 contract-cli contract approval get <process-instance-id> --profile contract --as app
 contract-cli contract approval get <process-instance-id> --profile contract --as app --notice-filter notice_filter --task-instance-filter task_instance_filter
+contract-cli contract approval get <process-instance-id> --profile contract --as user
 ```
 
 支持参数：
@@ -1036,9 +1043,67 @@ contract-cli contract approval get <process-instance-id> --profile contract --as
 
 身份规则：
 
-- 当前仅支持 `--as app`。
-- 走 `GET /open-apis/contract/v1/process_instances/{process_instance_id}`。
+- `--as app` 走 `GET /open-apis/contract/v1/process_instances/{process_instance_id}`。
+- `--as user` 走 `GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}`。
+- user 身份不发送调用人 `user_id` / `user_id_type`，也不主动发送 `X-MCP-Response-Profile`，沿用服务端默认响应兼容配置。
 - 不接受 `--input-file` / `--data`。
+
+#### `contract-cli contract approval comment list`
+
+用途：以当前个人 Token 查询完整审批评论树，不分页。
+
+```bash
+contract-cli contract approval comment list <process-instance-id> --profile contract --as user
+```
+
+- 仅支持 `--as user`。
+- 走 `GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}/comments`。
+- 已删除评论可能仍保留；附件需检查 `available`，下载统一使用 `contract download-file --as user`。
+
+#### `contract-cli contract approval comment create`
+
+用途：以当前个人 Token 创建一级评论或回复，可关联 @ 用户与附件。
+
+```bash
+contract-cli contract approval comment create <process-instance-id> --profile contract --as user --data '{"content":"请确认"}'
+contract-cli contract approval comment create <process-instance-id> --profile contract --as user --mention-id-type open_id --input-file comment.json
+```
+
+- `--input-file` / `--data` 必填且互斥；请求体支持 `content`、`parent_comment_id`、`user_id`、`file_ids`、`task_instance_id`。
+- `--mention-id-type` 映射到 query `user_id_type`，只解释请求体里的被 @ 用户，不用于指定评论发起人。
+- 仅支持 `--as user`；非幂等，出现“执行结果不确定”时先用 `comment list` 查询，禁止直接重试。
+
+#### `contract-cli contract approval task list`
+
+用途：查询当前个人 Token 对应用户的待办、已办或抄送/知会任务。
+
+```bash
+contract-cli contract approval task list --profile contract --as user --task-type todo --page-size 20
+contract-cli contract approval task list --profile contract --as user --input-file task-search.json
+```
+
+- 仅支持 `--as user`，走 `POST /open-apis/contract/v1/mcp/tasks`。
+- `--task-type todo|done|notice` 分别映射 `task_type_code` 0/1/2；另支持 `--query`、`--page-index`、`--page-size`，flag 覆盖 JSON body 同名字段。
+- 其余筛选字段通过 JSON body 传入。该 POST 是读取操作，临时网络错误可安全重试一次。
+
+#### `contract-cli contract approval task approve`
+
+```bash
+contract-cli contract approval task approve <task-instance-id> --profile contract --as user --comment "同意" --file-id <file-id>
+```
+
+#### `contract-cli contract approval task reject`
+
+```bash
+contract-cli contract approval task reject <task-instance-id> --profile contract --as user --comment "条款风险未解决"
+```
+
+两条任务处理命令共同约束：
+
+- 仅支持 `--as user`，走 `POST /open-apis/contract/v1/mcp/tasks/{task_instance_id}/approval`。
+- `--comment` 在 approve 时可选、reject 时必填且不能为空白；`--file-id` 可重复，按 `String[]` 传输，附件类型必须是 `approveAttachment`。
+- 盖章和归档节点不支持，后端返回 `110507`；CLI 不提供 `archive_number`。
+- 非幂等；出现“执行结果不确定”时先查询任务列表或流程实例，禁止直接重试。
 
 #### `contract-cli contract category list`
 

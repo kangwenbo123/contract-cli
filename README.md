@@ -6,7 +6,7 @@
 
 `contract-cli` 是合同开放平台的命令行工具，面向人类使用者和 AI Agent 共同设计。它覆盖 profile 配置、user OAuth、app 身份、合同结构化命令、MDM 主数据命令、Agent skills 安装、版本检查、源码构建和 npm/npx 薄包装分发。
 
-[快速开始](#installation--quick-start) · [AI Agent](#quick-start-ai-agent) · [Agent Skills](#agent-skills) · [鉴权](#authentication) · [命令体系](#command-system) · [高级用法](#advanced-usage) · [安全提示](#security--risk-warnings) · [完整命令文档](docs/cli-command-reference.md)
+[快速开始](#installation--quick-start) · [AI Agent](#quick-start-ai-agent) · [Agent Skills](#agent-skills) · [鉴权](#authentication) · [命令体系](#command-system) · [高级用法](#advanced-usage) · [安全提示](#security--risk-warnings) · [完整命令文档](docs/cli-command-reference.md) · [User MCP 审批接口](docs/user-mcp-approval-interfaces.md)
 
 ## Why contract-cli?
 
@@ -151,7 +151,7 @@ contract-cli auth status --profile contract --as user
 
 WorkBuddy 使用 `qr_code_path` 交付原始 PNG 附件，AgentKit 使用 `qr_code_path`。豆包普通工作任务只展示 `verification_uri_complete` 和 `expires_at_display`，不展示二维码，也不读取或交付二维码文件。
 
-正式包固定使用 `contract` profile 和 `prod` 环境，不会使用历史非生产 profile 发起授权或业务请求。WorkBuddy 更新 Skills 后必须完全退出并重新启动，然后新建任务；已有任务不会热加载新 Skill。
+正式包固定使用 `contract` profile 和 `prod` 环境，不会使用历史非生产 profile 发起授权或业务请求。更新 Skills 后必须完全退出并重新启动，然后新建任务；已有任务不会热加载新 Skill。
 
 `auth init` 和 `auth complete` 都只请求一次。`complete` 返回 `pending` 时不持续轮询；请用户完成授权后再主动查询。返回 `uncertain`、`denied`、`expired` 或 `restart_required` 时禁止自动重试；用户明确同意重新授权后，才执行 `auth init --profile contract --output json --restart`。
 
@@ -231,7 +231,8 @@ contract-cli auth logout --profile contract --as app
 - `config`、`version`、`update check`、`skills list/install` 不需要登录态。
 - `contract ...`、`mdm ...` 结构化命令会根据 `--as user|app` 选择对应底层路径。
 - 当前大部分 MCP 路径仍是 user-only；显式用 app 调用 user-only 路径会直接报错。
-- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/download-file/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start/get`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 app 身份。
+- `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 app 身份。
+- `contract download-file`、`contract approval get` 支持 user/app；`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 user。
 - 兼容旧身份值 `bot`，但新文档和新脚本统一使用 `app`。
 
 ## Command System
@@ -348,6 +349,7 @@ contract-cli mdm vendor list --profile contract --as user --output table
 ```bash
 contract-cli contract get <contract-id> --profile contract --as user --raw
 contract-cli contract download-file <file-id> --profile contract --as app --raw > contract.pdf
+contract-cli contract download-file <file-id> --contract <contract-id> --profile contract --as user --raw > contract.pdf
 ```
 
 ### Request Body

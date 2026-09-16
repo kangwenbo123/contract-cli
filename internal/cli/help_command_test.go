@@ -67,10 +67,45 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			args: []string{"contract", "download-file", "--help"},
 			contains: []string{
 				"contract download-file",
+				"--contract <contract-id>",
 				"--output-file <path>",
 				"--force",
 				"默认拉起保存文件弹窗",
-				"app-only",
+				"user: /open-apis/contract/v1/mcp/contracts/{contract_id}/files/{file_id}/download",
+				"300 秒",
+			},
+		},
+		{
+			name: "contract approval comments help",
+			args: []string{"contract", "approval", "comment", "create", "--help"},
+			contains: []string{
+				"contract approval comment create",
+				"--mention-id-type <type>",
+				"--input-file <path>",
+				"仅支持 --as user",
+				"非幂等",
+			},
+		},
+		{
+			name: "contract approval task list help",
+			args: []string{"contract", "approval", "task", "list", "--help"},
+			contains: []string{
+				"contract approval task list",
+				"--task-type <todo|done|notice>",
+				"--page-size <n>",
+				"POST /open-apis/contract/v1/mcp/tasks",
+				"读取操作",
+			},
+		},
+		{
+			name: "contract approval reject help",
+			args: []string{"contract", "approval", "task", "reject", "--help"},
+			contains: []string{
+				"contract approval task reject",
+				"--comment <text>",
+				"--file-id <file-id>",
+				"reject 时必填",
+				"盖章/归档节点不支持",
 			},
 		},
 		{

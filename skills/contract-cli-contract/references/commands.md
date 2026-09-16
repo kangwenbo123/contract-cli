@@ -27,6 +27,7 @@ contract-cli contract submit 7023646046559404327 --profile contract --as app
 contract-cli contract resubmit 7023646046559404327 --profile contract --as app
 contract-cli contract patch 7023646046559404327 --profile contract --as app --input-file contract-patch.json
 contract-cli contract download-file file_123 --profile contract --as app --output-file ./contract.pdf
+contract-cli contract download-file <file-id> --contract <contract-id> --profile contract --as user --output-file ./contract.pdf
 contract-cli contract delete 7023646046559404327 --profile contract --as app
 contract-cli contract print-file --profile contract --as app --input-file print-file.json
 contract-cli contract share get 7023646046559404327 --profile contract --as app
@@ -38,6 +39,12 @@ contract-cli contract cooperation file get <contract-id> --profile contract --as
 contract-cli contract cooperation file download <file-id> --profile contract --as app --output-file ./cooperation.docx
 contract-cli contract approval start process_123 --profile contract --as app --input-file approval.json
 contract-cli contract approval get process_123 --profile contract --as app
+contract-cli contract approval get <process-instance-id> --profile contract --as user
+contract-cli contract approval comment list <process-instance-id> --profile contract --as user
+contract-cli contract approval comment create <process-instance-id> --profile contract --as user --data '{"content":"请确认"}'
+contract-cli contract approval task list --profile contract --as user --task-type todo --page-size 20
+contract-cli contract approval task approve <task-instance-id> --profile contract --as user --comment "同意"
+contract-cli contract approval task reject <task-instance-id> --profile contract --as user --comment "条款风险未解决"
 contract-cli contract category list --profile contract --as app --lang zh-CN
 contract-cli contract template list --profile contract --as app --category-number CAT-1 --page-size 20 --user-id ou_xxx --user-id-type employee_id
 contract-cli contract template get tpl_123 --profile contract --as app --user-id ou_xxx --user-id-type employee_id
@@ -62,9 +69,10 @@ contract-cli contract enum list --profile contract --type contract_status
 
 ## 已知限制
 
-- `contract upload-file` 当前同时支持 user/app 身份，均走 `/open-apis/contract/v1/files/upload`
+- `contract upload-file` 支持 user/app；user 上传 `reviewAttachment` / `approveAttachment` 自动完成 MCP prepare → content → commit，返回最终 `file_id`；app 和其他 user 类型继续走 `/open-apis/contract/v1/files/upload`。新附件须同一 user 在 commit 后 30 分钟内用于评论/审批，详见 [附件规则](approval-mcp-fields.md#新附件上传与复用)
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *` 当前仅支持 app 身份
-- `contract submit`、`contract resubmit`、`contract patch`、`contract download-file`、`contract delete`、`contract print-file`、`contract approval start`、`contract approval get` 当前仅支持 app 身份
+- `contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract approval start` 当前仅支持 app 身份
+- `contract download-file`、`contract approval get` 支持 user/app；`contract approval comment list/create`、`contract approval task list/approve/reject` 仅支持 user
 - `contract share get`、`contract share batch-create`、`contract cooperation link get`、`contract cooperation record get`、`contract cooperation search`、`contract cooperation file get/download` 当前仅支持 app 身份
 - `contract template fields` 尚未实现
 - `contract create` 不自动帮你补模板信息；当前就是透传请求体
@@ -143,7 +151,7 @@ contract-cli contract delete 7023646046559404327 --profile contract --as app
 
 不要把 `contract patch` 当成任意基础字段更新；官方文档当前只确认了 `ocr_file_id`、`scan_file_id`、`archive_attachment_map`、`archive_attachment_file_ids` 等文件/归档字段。
 
-## app-only 文件命令
+## 文件命令
 
 ```bash
 # 默认拉起保存弹窗；Agent/CI/远程环境建议显式传 --output-file
@@ -152,6 +160,9 @@ contract-cli contract download-file file_123 --profile contract --as app --outpu
 # 管道场景使用 --raw
 contract-cli contract download-file file_123 --profile contract --as app --raw > contract.pdf
 
+# user 身份必须同时提供合同 ID；CLI 会立即消费 300 秒TOS 临时预签名 URL
+contract-cli contract download-file <file-id> --contract <contract-id> --profile contract --as user --output-file ./contract.pdf
+
 # 生成合同打印文件，请求体必填
 contract-cli contract print-file --profile contract --as app --input-file print-file.json
 ```
@@ -159,12 +170,14 @@ contract-cli contract print-file --profile contract --as app --input-file print-
 接口路径：
 
 - `download-file`：`GET /open-apis/contract/v1/files/{file_id}`
+- `download-file --as user`：`GET /open-apis/contract/v1/mcp/contracts/{contract_id}/files/{file_id}/download`
 - `print-file`：`POST /open-apis/contract/v1/files`
 
 注意：
 
 - 正式命令是 `download-file`，不支持 `dowload-file` 拼写。
 - `download-file --output-file` 遇到已存在文件会失败；需要覆盖时加 `--force`。
+- user 身份的临时下载地址不会输出或写入日志；保存文件先写临时文件，完整成功后再替换目标。
 
 ## app-only 分享与协商查询
 
@@ -178,6 +191,7 @@ contract-cli contract cooperation file get <contract-id> --profile contract --as
 contract-cli contract cooperation file download <file-id> --profile contract --as app --output-file ./cooperation.docx
 contract-cli contract approval start process_123 --profile contract --as app --data '{"task_instance_id":"task-1","command_type":"general"}'
 contract-cli contract approval get process_123 --profile contract --as app --notice-filter notice_filter --task-instance-filter task_instance_filter
+contract-cli contract approval get <process-instance-id> --profile contract --as user
 ```
 
 接口路径：
@@ -191,5 +205,18 @@ contract-cli contract approval get process_123 --profile contract --as app --not
 - `cooperation file download`：`GET /open-apis/contract/v1/contracts/cooperation/{file_id}/download_file`
 - `approval start`：`POST /open-apis/contract/v1/process_instances/{process_instance_id}/task_approval`
 - `approval get`：`GET /open-apis/contract/v1/process_instances/{process_instance_id}`
+- `approval get --as user`：`GET /open-apis/contract/v1/mcp/process_instances/{process_instance_id}`
 
 审批发起请求体字段：看 [approval-fields.md](approval-fields.md)
+
+## user MCP 审批评论与个人任务
+
+```bash
+contract-cli contract approval comment list <process-instance-id> --profile contract --as user
+contract-cli contract approval comment create <process-instance-id> --profile contract --as user --data '{"content":"请确认"}'
+contract-cli contract approval task list --profile contract --as user --task-type todo --page-size 20
+contract-cli contract approval task approve <task-instance-id> --profile contract --as user --comment "同意" --file-id <file-id>
+contract-cli contract approval task reject <task-instance-id> --profile contract --as user --comment "条款风险未解决"
+```
+
+完整字段、重试和附件规则：看 [approval-mcp-fields.md](approval-mcp-fields.md)。
