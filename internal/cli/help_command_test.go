@@ -195,8 +195,20 @@ func TestHelpRequestsRenderExpectedTopics(t *testing.T) {
 			contains: []string{
 				"mdm vendor create",
 				"--user-id <id>",
+				"--department-id-type <type>",
+				"open_department_id",
 				"必传 --user-id",
 				"不要传后端生成的 vendor 编码",
+			},
+		},
+		{
+			name: "mdm vendor patch help",
+			args: []string{"mdm", "vendor", "patch", "--help"},
+			contains: []string{
+				"mdm vendor patch",
+				"--department-id-type <type>",
+				"open_department_id",
+				"ownerDepts",
 			},
 		},
 		{
