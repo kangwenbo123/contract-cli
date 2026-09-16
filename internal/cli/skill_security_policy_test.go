@@ -47,7 +47,7 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 	for _, required := range []string{
 		"不得主动询问或接收原始凭证",
 		"正式包固定使用 `contract` profile 和 `prod` 环境",
-		"Skill 更新后必须完全退出 WorkBuddy 并新建任务",
+		"Skill 更新后必须完全退出并新建任务",
 		"已有任务不会热加载新 Skill",
 		"命令示例仅供本地操作者使用",
 		"不得要求用户把 App Secret 发到对话中",

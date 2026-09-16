@@ -68,17 +68,24 @@ func TestContractUploadMCPAttachmentStopsOnInvalidResponse(t *testing.T) {
 
 func TestContractUploadMCPAttachmentValidatesPrepareBeforeSendingFile(t *testing.T) {
 	for _, tc := range []struct {
+		name  string
 		key   string
 		value any
 	}{
-		{"upload_id", ""}, {"upload_url", "http://files.example.test/upl_secret"},
-		{"upload_url", "https://user:upl_secret@files.example.test/content"},
-		{"upload_url", uploadSessionURL + "#upl_secret"}, {"upload_method", "PUT"},
-		{"upload_headers", map[string]string{"Authorization": "Bearer upl_secret"}},
-		{"expires_at", "2000-01-01T00:00:00Z"}, {"expires_at", "upl_secret"},
-		{"max_size", 0}, {"max_size", 2},
+		{"missing upload id", "upload_id", ""},
+		{"insecure URL", "upload_url", "http://files.example.test/upl_secret"},
+		{"URL credentials", "upload_url", "https://user:upl_secret@files.example.test/content"},
+		{"URL fragment", "upload_url", uploadSessionURL + "#upl_secret"},
+		{"unsupported method", "upload_method", "PUT"},
+		{"unexpected headers", "upload_headers", map[string]string{"Authorization": "Bearer upl_secret"}},
+		{"expired session", "expires_at", "2000-01-01T00:00:00Z"},
+		{"invalid expiry", "expires_at", "upl_secret"},
+		{"zero size limit", "max_size", 0},
+		{"file exceeds size limit", "max_size", 2},
 	} {
-		t.Run(fmt.Sprint(tc.key, tc.value), func(t *testing.T) {
+		// t.TempDir includes the test name; keep response secrets out of the
+		// local file path so the unchanged command-argument log cannot cause a false positive.
+		t.Run(tc.name, func(t *testing.T) {
 			data := validAttachmentPrepareData()
 			data[tc.key] = tc.value
 			body, err := json.Marshal(map[string]any{"code": 0, "data": data})
