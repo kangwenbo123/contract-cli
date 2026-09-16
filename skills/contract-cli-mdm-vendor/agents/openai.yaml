@@ -1,7 +1,7 @@
 interface:
   display_name: "Contract CLI MDM Vendor"
-  short_description: "Query vendor candidates/details and create or update vendors"
-  default_prompt: "Use $contract-cli-mdm-vendor to query vendor candidates or vendor details with user or app identity, or create, update, list all, and query by certificate with app identity."
+  short_description: "Query, create, patch, enable, disable, or update vendors"
+  default_prompt: "Use $contract-cli-mdm-vendor through contract-cli only to query vendor candidates or vendor details with user or app identity; create, update, or patch vendors; enable or disable vendors as user; and run certificate queries as app. Resolve the target first, inspect field configuration before uncertain writes, fetch vendor details before changing child records, ask before ambiguous writes, and never retry an UNKNOWN write result without querying the final state."
 
 policy:
   allow_implicit_invocation: true
