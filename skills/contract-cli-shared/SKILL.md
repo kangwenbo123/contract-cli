@@ -61,6 +61,8 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - `contract cooperation search`
 - `contract cooperation file get/download`
 - `contract approval start/get`
+- `contract approval comment list/create`
+- `contract approval task list/approve/reject`
 - `contract category list`
 - `contract template list/get/instantiate`
 - `contract enum list`
@@ -77,7 +79,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 
 ## 共享约束
 
-- Skill 更新后必须完全退出 WorkBuddy 并新建任务。已有任务不会热加载新 Skill，不得用旧任务判断当前正式包的环境行为。
+- Skill 更新后必须完全退出并新建任务。已有任务不会热加载新 Skill，不得用旧任务判断当前正式包的环境行为。
 - Device 模式业务命令提示未授权时，按 [../auth/SKILL.md](../auth/SKILL.md) 执行 `auth init`；用户明确完成授权后只执行一次 `auth complete`。
 - `auth init` 返回后严格执行授权 Skill 的展示契约：WorkBuddy 使用 `present_files` 交付 `qr_code_path` 对应的原始 PNG 附件，AgentKit 继续使用 `qr_code_path`；豆包普通工作任务只展示可点击授权链接和过期时间，不处理 `qr_code_path` 或 `qr_code_data_uri`，也不调用代码执行或图片工具。展示完成后立即结束当前轮次。
 - WorkBuddy 授权回复统一使用 [../auth/SKILL.md](../auth/SKILL.md) 中的面向用户文案，不向用户暴露 `user 身份未授权`、CLI 命令或内部状态。
@@ -92,15 +94,17 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 
 - `api call` 当前不对外开放；执行 `contract-cli api ...` 会直接返回 `api call 暂未开放使用，请使用已开放的结构化命令`
 - `contract/v1/mcp` 这批路径大部分只支持 `--as user`
-- 同时支持 `user` 与 `app` 的结构化业务命令：`contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list`
-- app-only 命令包括 `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/download-file/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start/get`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *`
+- 同时支持 `user` 与 `app` 的结构化业务命令：`contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list`
+- app-only 命令包括 `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *`
+- user-only 命令包括 `contract approval comment list/create` 与 `contract approval task list/approve/reject`
 - 双身份合同命令的 app 路由走 `/open-apis/contract/v1/...`；`contract upload-file` 走 `/open-apis/contract/v1/files/upload`；`mdm vendor list/get` 的 app 路由走 `/open-apis/mdm/v1/vendors...`；`mdm legal list/get` 的 app 路由分别走 `/open-apis/mdm/v1/legal_entities/list_all` 和 `/open-apis/mdm/v1/legal_entities/{legal_entity_id}`；`mdm fields list` 的 app 路由走 `/open-apis/mdm/v1/config/config_list`
 - 若命中 `/open-apis/contract/v1/mcp/` 且未传 `--as`，CLI 会默认按 `user` 解析，不看 `default_identity`
 - 这批命令不暴露 `--operator`
 - 请求体文件输入统一使用 `--input-file`
 - `--user-id-type` / `--user-id` 是开放平台通用 query 参数：结构化命令支持；`--user-id-type` 不传时默认拼接 `user_id_type=user_id`，app 标准接口允许显式传值覆盖；部分 user-only MCP tool spec 会固定 query 默认值，例如 `contract search --as user` 当前固定 `user_id`，以模块 Skill 为准。`--user-id` 传了就透传，不传就不带。例外：`mdm vendor create/update` 与 `mdm legal create/update` 写接口会本地要求 `--user-id`
+- user MCP 审批详情、评论、任务和统一文件下载不发送调用人 query；评论创建的 `--mention-id-type` 只映射被 @ 用户的 `user_id_type`
 - `--file` 现在只用于真实二进制文件上传，例如 `contract upload-file`
-- `contract download-file` 下载二进制响应，默认弹窗保存；Agent/CI/远程环境优先传 `--output-file`，管道场景用 `--raw`
+- `contract download-file` 下载二进制响应，默认弹窗保存；user 身份必须加 `--contract`，Agent/CI/远程环境优先传 `--output-file`，管道场景用 `--raw`
 - JSON 请求体文件输入始终使用 `--input-file`，不要把 `--file` 当 JSON 请求体参数
 - 默认输出使用 `--output json`，普通查询不要加 `--raw`。
 - `--raw` 只在用户明确要求原始开放平台响应、排障、管道处理或二进制下载场景使用；`--raw` 会绕过 JSON renderer，因此不会注入 `_notice.update`，也不会触发升级提示 skill。
@@ -134,7 +138,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 - Device 授权返回 `denied`、`expired` 或 `restart_required`：先等待用户明确同意，再执行一次带 `--restart` 的 `auth init`；禁止自动重试
 - MDM 写接口报 `requires --user-id`：补上当前操作人，例如 `--user-id <operator-user-id>`
 - 用户想做文件上传：使用 `contract upload-file --as user|app --file <path> --file-type <type>`
-- 用户想下载文件：使用 `contract download-file --as app --output-file <path>`；不要写成 `dowload-file`
+- 用户想下载文件：使用 `contract download-file --as user|app --output-file <path>`；user 身份补 `--contract <contract-id>`，不要写成 `dowload-file`
 - 用户想下载协商文件：使用 `contract cooperation file download --as app --output-file <path>`
 - 用户想下载主数据附件：使用 `mdm file download --as app --output-file <path>`
 - 用户想做付款申请、付款计划或付款记录：使用 `payment ... --as app`，不要放到 `contract` 子命令下面

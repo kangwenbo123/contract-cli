@@ -483,14 +483,12 @@ func TestContractAppOnlyCommandsRejectUserIdentityBeforeHTTP(t *testing.T) {
 		{"contract", "submit", "contract-1", "--profile", "contract", "--as", "user"},
 		{"contract", "resubmit", "contract-1", "--profile", "contract", "--as", "user"},
 		{"contract", "patch", "contract-1", "--profile", "contract", "--as", "user", "--data", `{"title":"demo"}`},
-		{"contract", "download-file", "file-123", "--profile", "contract", "--as", "user", "--output-file", filepath.Join(dir, "download.pdf")},
 		{"contract", "delete", "contract-1", "--profile", "contract", "--as", "user"},
 		{"contract", "print-file", "--profile", "contract", "--as", "user", "--data", `{"contract_id":"contract-1"}`},
 		{"contract", "share", "get", "contract-1", "--profile", "contract", "--as", "user"},
 		{"contract", "cooperation", "link", "get", "contract-1", "--profile", "contract", "--as", "user"},
 		{"contract", "cooperation", "record", "get", "contract-1", "--profile", "contract", "--as", "user"},
 		{"contract", "approval", "start", "process-1", "--profile", "contract", "--as", "user", "--data", `{"task_instance_id":"task-1"}`},
-		{"contract", "approval", "get", "process-1", "--profile", "contract", "--as", "user"},
 	}
 
 	for _, args := range testCases {

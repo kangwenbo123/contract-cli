@@ -163,7 +163,8 @@ func TestOpenAPIGapSkillsDoNotKeepObsoleteCoverageClaims(t *testing.T) {
 				"若需求是授权：当前 skill 不覆盖",
 			},
 			required: []string{
-				"想发起流程审批或查询审批实例：用 `contract approval start|get --as app`",
+				"想发起旧版流程审批：用 `contract approval start --as app`",
+				"想查询审批实例：用 `contract approval get --as user|app`",
 				"想授予合同权限：用 `contract authorization grant --as app`",
 			},
 		},

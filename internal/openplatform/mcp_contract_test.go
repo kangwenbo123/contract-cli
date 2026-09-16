@@ -61,6 +61,8 @@ func TestContractMCPToolSpecsDeclareReadWriteSemantics(t *testing.T) {
 		"sync-user-groups":         true,
 		"create-contracts":         true,
 		"create-template-instance": true,
+		"create-process-comment":   true,
+		"process-approval-task":    true,
 	}
 	for _, spec := range openplatform.ContractMCPToolSpecs() {
 		want := openplatform.OperationRead
@@ -69,6 +71,65 @@ func TestContractMCPToolSpecsDeclareReadWriteSemantics(t *testing.T) {
 		}
 		if spec.OperationKind != want {
 			t.Fatalf("tool %q operation = %q, want %q", spec.ToolName, spec.OperationKind, want)
+		}
+	}
+}
+
+func TestContractMCPToolSpecsIncludeApprovalWorkflow(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]struct {
+		method    string
+		path      string
+		operation openplatform.OperationKind
+	}{
+		"list-process-comments": {
+			method:    "GET",
+			path:      "/open-apis/contract/v1/mcp/process_instances/{process_instance_id}/comments",
+			operation: openplatform.OperationRead,
+		},
+		"download-contract-file": {
+			method:    "GET",
+			path:      "/open-apis/contract/v1/mcp/contracts/{contract_id}/files/{file_id}/download",
+			operation: openplatform.OperationRead,
+		},
+		"get-process-instance": {
+			method:    "GET",
+			path:      "/open-apis/contract/v1/mcp/process_instances/{process_instance_id}",
+			operation: openplatform.OperationRead,
+		},
+		"create-process-comment": {
+			method:    "POST",
+			path:      "/open-apis/contract/v1/mcp/process_instances/{process_instance_id}/comments",
+			operation: openplatform.OperationWrite,
+		},
+		"list-personal-tasks": {
+			method:    "POST",
+			path:      "/open-apis/contract/v1/mcp/tasks",
+			operation: openplatform.OperationRead,
+		},
+		"process-approval-task": {
+			method:    "POST",
+			path:      "/open-apis/contract/v1/mcp/tasks/{task_instance_id}/approval",
+			operation: openplatform.OperationWrite,
+		},
+	}
+
+	for name, expected := range want {
+		spec, ok := openplatform.ContractMCPToolSpec(name)
+		if !ok {
+			t.Errorf("ContractMCPToolSpec(%q) was not found", name)
+			continue
+		}
+		if spec.Method != expected.method || spec.Path != expected.path || spec.OperationKind != expected.operation {
+			t.Errorf("spec %q = (%s, %s, %s), want (%s, %s, %s)", name, spec.Method, spec.Path, spec.OperationKind, expected.method, expected.path, expected.operation)
+		}
+		wantQuery := ""
+		if name == "get-process-instance" || name == "list-personal-tasks" || name == "list-process-comments" {
+			wantQuery = "user_id_type=user_id"
+		}
+		if spec.FixedQuery.Encode() != wantQuery {
+			t.Errorf("spec %q fixed query = %v, want %q", name, spec.FixedQuery, wantQuery)
 		}
 	}
 }

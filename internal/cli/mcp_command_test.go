@@ -494,7 +494,6 @@ func TestLegacyMCPCommandNamesAreRejected(t *testing.T) {
 	for _, args := range testCases {
 		args := args
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			t.Parallel()
 			err := app.Run(context.Background(), args)
 			if err == nil || !strings.Contains(err.Error(), "unknown command") {
 				t.Fatalf("unexpected legacy command error: %v", err)
