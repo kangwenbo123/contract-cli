@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -99,7 +102,11 @@ func TestInspectHonorsEarlierDeadlineAndReapsHelper(t *testing.T) {
 		if command.ProcessState == nil {
 			t.Fatal("helper was not waited/reaped")
 		}
-		if err := command.Process.Kill(); err != os.ErrProcessDone {
+		// Wait has already observed termination (ProcessState above). On Windows,
+		// Wait releases the process handle, so a later Kill returns EINVAL rather
+		// than ErrProcessDone. Do not mistake that released handle for a live helper.
+		err := command.Process.Kill()
+		if !errors.Is(err, os.ErrProcessDone) && !(runtime.GOOS == "windows" && errors.Is(err, syscall.EINVAL)) {
 			t.Fatalf("helper still alive: %v", err)
 		}
 	}

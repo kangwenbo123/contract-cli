@@ -3,13 +3,83 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"cn.qfei/contract-cli/internal/cli"
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/invocation"
+	updatecheck "cn.qfei/contract-cli/internal/update"
 )
+
+func TestEnvironmentInspectReleaseVersionRemainsLocal(t *testing.T) {
+	for _, cached := range []bool{false, true} {
+		name := "missing-cache"
+		if cached {
+			name = "stale-cache"
+		}
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			cachePath := filepath.Join(directory, "update-check.json")
+			var originalCache []byte
+			if cached {
+				if err := updatecheck.SaveCache(cachePath, updatecheck.Cache{
+					CheckedAt: fixedCLINow().Add(-25 * time.Hour), Channel: "latest",
+					CurrentVersion: "1.8.3", LatestVersion: "1.8.4", UpdateAvailable: true,
+				}); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				originalCache, err = os.ReadFile(cachePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			var stdout bytes.Buffer
+			requests, inspections := 0, 0
+			app := cli.New(cli.Options{
+				Stdout: &stdout, Stderr: &bytes.Buffer{},
+				Store: config.NewStore(directory), Secrets: config.NewSecretsStore(directory),
+				UpdateCurrentVersion: "1.8.3", Now: fixedCLINow,
+				LookupEnv: func(string) (string, bool) { return "", false },
+				HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					requests++
+					return jsonResponse(`{"dist-tags":{"latest":"1.8.4"}}`), nil
+				})},
+				InspectEnvironment: func(context.Context, int) invocation.Result {
+					inspections++
+					return sampleEnvironmentReport()
+				},
+			})
+			if err := app.Run(context.Background(), []string{"environment", "inspect", "--output", "json"}); err != nil {
+				t.Fatal(err)
+			}
+			if requests != 0 || inspections != 1 {
+				t.Errorf("HTTP requests = %d, inspections = %d; want 0 and 1", requests, inspections)
+			}
+			cache, err := os.ReadFile(cachePath)
+			if cached {
+				if err != nil || !bytes.Equal(cache, originalCache) {
+					t.Errorf("diagnostic changed existing update cache: %v", err)
+				}
+			} else if !os.IsNotExist(err) {
+				t.Errorf("diagnostic created update cache: %v", err)
+			}
+			var report invocation.Result
+			if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+				t.Fatal(err)
+			}
+			if report.AgentSourceType != "codex" || report.Confidence != "high" || report.RuleID != "client.codex.signed-bundle" {
+				t.Fatalf("diagnostic changed attribution: %+v", report)
+			}
+		})
+	}
+}
 
 func TestEnvironmentInspectText(t *testing.T) {
 	stdout := &bytes.Buffer{}

@@ -202,6 +202,10 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	}
 
 	a.logger.Info("run command", "args", redactCommandArgs(args))
+	// 本地来源诊断不访问更新服务，也不读取或刷新更新缓存。
+	if args[0] == "environment" {
+		return a.runEnvironment(ctx, args[1:])
+	}
 	a.maybePrepareUpdateNotice(ctx, args)
 
 	switch args[0] {
@@ -213,8 +217,6 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.runSkills(ctx, args[1:])
 	case "update":
 		return a.runUpdate(ctx, args[1:])
-	case "environment":
-		return a.runEnvironment(ctx, args[1:])
 	case "api":
 		return a.runAPI(ctx, args[1:])
 	case "contract":
