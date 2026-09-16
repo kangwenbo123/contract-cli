@@ -79,7 +79,7 @@ CRITICAL — 开始前 MUST 先读取 [../auth/SKILL.md](../auth/SKILL.md)，确
 
 ## 共享约束
 
-- Skill 更新后必须完全退出 WorkBuddy 并新建任务。已有任务不会热加载新 Skill，不得用旧任务判断当前正式包的环境行为。
+- Skill 更新后必须完全退出并新建任务。已有任务不会热加载新 Skill，不得用旧任务判断当前正式包的环境行为。
 - Device 模式业务命令提示未授权时，按 [../auth/SKILL.md](../auth/SKILL.md) 执行 `auth init`；用户明确完成授权后只执行一次 `auth complete`。
 - `auth init` 返回后严格执行授权 Skill 的展示契约：WorkBuddy 使用 `present_files` 交付 `qr_code_path` 对应的原始 PNG 附件，AgentKit 继续使用 `qr_code_path`；豆包普通工作任务只展示可点击授权链接和过期时间，不处理 `qr_code_path` 或 `qr_code_data_uri`，也不调用代码执行或图片工具。展示完成后立即结束当前轮次。
 - WorkBuddy 授权回复统一使用 [../auth/SKILL.md](../auth/SKILL.md) 中的面向用户文案，不向用户暴露 `user 身份未授权`、CLI 命令或内部状态。

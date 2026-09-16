@@ -150,7 +150,7 @@ contract-cli auth status --profile contract --as user
 
 WorkBuddy 使用 `qr_code_path` 交付原始 PNG 附件，AgentKit 使用 `qr_code_path`。豆包普通工作任务只展示 `verification_uri_complete` 和 `expires_at_display`，不展示二维码，也不读取或交付二维码文件。
 
-正式包固定使用 `contract` profile 和 `prod` 环境，不会使用历史非生产 profile 发起授权或业务请求。WorkBuddy 更新 Skills 后必须完全退出并重新启动，然后新建任务；已有任务不会热加载新 Skill。
+正式包固定使用 `contract` profile 和 `prod` 环境，不会使用历史非生产 profile 发起授权或业务请求。更新 Skills 后必须完全退出并重新启动，然后新建任务；已有任务不会热加载新 Skill。
 
 `auth init` 和 `auth complete` 都只请求一次。`complete` 返回 `pending` 时不持续轮询；请用户完成授权后再主动查询。返回 `uncertain`、`denied`、`expired` 或 `restart_required` 时禁止自动重试；用户明确同意重新授权后，才执行 `auth init --profile contract --output json --restart`。
 
