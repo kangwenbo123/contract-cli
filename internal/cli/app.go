@@ -38,7 +38,7 @@ type Options struct {
 	LookupEnv          func(string) (string, bool)
 	SkillsFS           fs.FS
 	CredentialStore    credential.Store
-	InspectEnvironment func(int) invocation.Result
+	InspectEnvironment func(context.Context, int) invocation.Result
 
 	UpdateRegistryURL    string
 	UpdateCurrentVersion string
@@ -57,7 +57,7 @@ type App struct {
 	lookupEnv          func(string) (string, bool)
 	skillsFS           fs.FS
 	credentialStore    credential.Store
-	inspectEnvironment func(int) invocation.Result
+	inspectEnvironment func(context.Context, int) invocation.Result
 	updateURL          string
 	updateVersion      string
 	updateNotice       map[string]any
@@ -214,7 +214,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	case "update":
 		return a.runUpdate(ctx, args[1:])
 	case "environment":
-		return a.runEnvironment(args[1:])
+		return a.runEnvironment(ctx, args[1:])
 	case "api":
 		return a.runAPI(ctx, args[1:])
 	case "contract":

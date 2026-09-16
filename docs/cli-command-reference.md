@@ -222,12 +222,16 @@ contract-cli environment inspect --output json --include-processes
 
 - 每一次实际业务 HTTP 请求发送前都会重新探测，包括 OpenPlatform Client 的请求重试和 Token 刷新后的业务请求重放
 - 识别结果只作用于本次请求，不写入 profile、OAuth Token 或其他持久化配置
-- macOS 校验代码签名并匹配 Bundle ID + Team ID
+- macOS 校验代码签名并匹配 Bundle ID + Team ID；通过 `--ignore-resources` 跳过资源内容校验，应用内生成缓存不会单独导致识别失败，与 EveryLine 的识别方案一致
 - Windows 优先匹配 Package Family Name；非商店桌面程序通过系统 WinVerifyTrust 校验 Authenticode，并匹配证书 SHA-256 + 可执行文件路径
 - Linux 当前按可执行文件路径或进程名降级识别
-- 已发现 macOS/Windows 平台身份但身份不匹配时返回 `unknown`，不再降级为路径或进程名命中
-- 业务请求只透传 `X-Qfei-Request-Source-Type`、`X-Qfei-Channel-Type`、`X-Qfei-Evidence-Type`、`X-Qfei-Channel-Confidence`、`X-Qfei-Detector-Version` 和 `X-Qfei-Rule-Id`
+- macOS/Windows 签名变化、未登记或验签失败时，仍可按明确产品路径（medium）或进程名（low）归因；已登记的有效身份才提升为 high，无证据或产品证据冲突返回 unknown
+- 当前识别器为 `process-ancestry-v6`；探测共享 5 秒预算，超时保留本次已收到的完整报告，没有有效报告才返回 unknown；用户取消时停止业务请求
+- 来源识别透传 `X-Qfei-Channel-Type: cli`、`X-Qfei-Agent-Source-Type`、`X-Qfei-Product-Code: contract`、`X-Qfei-Evidence-Type`、`X-Qfei-Channel-Confidence`、`X-Qfei-Detector-Version` 和 `X-Qfei-Rule-Id`
 - 业务 Header 不包含 PID、进程路径、完整命令行或用户目录信息
+- 每个 OpenPlatform 逻辑请求生成一个 32 位十六进制 `trace_id`；请求发送 `traceparent: 00-<trace_id>-<span_id>-01` 和同值 `X-Log-Id: <trace_id>`
+- 请求重试复用同一 `trace_id`，每个实际 HTTP attempt 重新生成 `span_id`；最终错误信息包含 `trace_id=<值>`
+- Trace ID 只用于可观测性关联，不作为鉴权、幂等键或客户端来源证明
 
 #### `contract-cli skills list`
 

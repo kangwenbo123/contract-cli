@@ -17,7 +17,7 @@ func TestEnvironmentInspectText(t *testing.T) {
 		Stdout: stdout,
 		Stderr: &bytes.Buffer{},
 		Store:  config.NewStore(t.TempDir()),
-		InspectEnvironment: func(depth int) invocation.Result {
+		InspectEnvironment: func(_ context.Context, depth int) invocation.Result {
 			if depth != invocation.DefaultMaxDepth {
 				t.Fatalf("depth = %d", depth)
 			}
@@ -30,8 +30,9 @@ func TestEnvironmentInspectText(t *testing.T) {
 	}
 	output := stdout.String()
 	for _, want := range []string{
-		"Request Source: cli",
-		"Channel: codex",
+		"Channel: cli",
+		"Agent Source: codex",
+		"Product: contract",
 		"Evidence: macos_code_signature",
 		"Confidence: high",
 		"Rule: client.codex.signed-bundle",
@@ -52,7 +53,7 @@ func TestEnvironmentInspectJSONCanIncludeProcesses(t *testing.T) {
 		Stdout:             stdout,
 		Stderr:             &bytes.Buffer{},
 		Store:              config.NewStore(t.TempDir()),
-		InspectEnvironment: func(int) invocation.Result { return sampleEnvironmentReport() },
+		InspectEnvironment: func(context.Context, int) invocation.Result { return sampleEnvironmentReport() },
 	})
 
 	err := app.Run(context.Background(), []string{"environment", "inspect", "--output", "json", "--include-processes"})
@@ -60,7 +61,10 @@ func TestEnvironmentInspectJSONCanIncludeProcesses(t *testing.T) {
 		t.Fatalf("Run(environment inspect) error = %v", err)
 	}
 	output := stdout.String()
-	if !strings.Contains(output, `"channel_type": "codex"`) || !strings.Contains(output, `"processes":`) {
+	if !strings.Contains(output, `"channel_type": "cli"`) ||
+		!strings.Contains(output, `"agent_source_type": "codex"`) ||
+		!strings.Contains(output, `"product_code": "contract"`) ||
+		!strings.Contains(output, `"processes":`) {
 		t.Fatalf("unexpected json output:\n%s", output)
 	}
 }
@@ -84,16 +88,17 @@ func sampleEnvironmentReport() invocation.Result {
 		ProcessDepth: 2, BundlePath: "/Applications/ChatGPT.app", BundleID: "com.openai.codex", TeamID: "2DC432GLL2", Version: "1.0.0", SignatureValid: true,
 	}
 	return invocation.Result{
-		RequestSourceType: "cli",
-		ChannelType:       "codex",
-		EvidenceType:      "macos_code_signature",
-		Confidence:        "high",
-		DetectorVersion:   invocation.DetectorVersion,
-		Platform:          "darwin",
-		RuleID:            "client.codex.signed-bundle",
-		Reason:            "matched verified bundle",
-		MatchedProcess:    &matched,
-		Application:       &application,
+		ChannelType:     "cli",
+		AgentSourceType: "codex",
+		ProductCode:     invocation.ProductCodeContract,
+		EvidenceType:    "macos_code_signature",
+		Confidence:      "high",
+		DetectorVersion: invocation.DetectorVersion,
+		Platform:        "darwin",
+		RuleID:          "client.codex.signed-bundle",
+		Reason:          "matched verified bundle",
+		MatchedProcess:  &matched,
+		Application:     &application,
 		Processes: []invocation.Process{
 			{Depth: 0, PID: 30, PPID: 20, Name: "contract-cli"},
 			matched,

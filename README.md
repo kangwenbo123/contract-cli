@@ -293,22 +293,29 @@ contract-cli environment inspect --output json
 contract-cli environment inspect --output json --include-processes
 ```
 
-CLI 会在每一次实际业务 HTTP 请求发送前重新回溯当前父进程链，不把识别结果写入 profile、OAuth Token 或其他持久化配置。即使同一台机器同时安装 Doubao 和 WorkBuddy，每次独立调用也按当时真实的父进程链重新判断；网络重试或 Token 刷新后的业务请求重放同样会再次执行探测。
+CLI 会在每一次实际业务 HTTP 请求发送前重新回溯当前父进程链，不把识别结果写入 profile、OAuth Token 或其他持久化配置。即使同一台机器同时安装 Doubao、Doubao Work 和 WorkBuddy，每次独立调用也按当时真实的父进程链重新判断；网络重试或 Token 刷新后的业务请求重放同样会再次执行探测。
+
+每次探测共用 **5 秒总预算**（包括进程回溯、全部签名/身份检查），不是每个步骤各等 5 秒。探测在 CLI 自身的短生命周期子进程中执行，仍从原 CLI 的进程链开始识别；无需额外安装组件。预算耗尽时终止并回收探测进程（macOS/Linux 同时终止其签名检测子进程），保留本次探测已收到的完整报告；没有有效报告才以 `unknown` / `none` / `unknown` 的来源、证据和置信度继续业务请求，并清除旧 Rule ID。进程启动失败或输出异常按同样规则降级，不沿用上一次请求的来源；用户主动取消业务请求则停止，不继续发送。5 秒是探测预算，之后有少量系统进程回收开销；HTTP 请求的原有超时与重试策略不变。
 
 当前证据等级：
 
-- macOS：校验应用代码签名，并同时匹配 Bundle ID 与 Team ID，命中时为 `high`。
+- macOS：使用 `codesign --verify --strict --ignore-resources` 校验应用代码签名，并同时匹配 Bundle ID 与 Team ID，命中时为 `high`。与 EveryLine 使用相同方案，不校验资源内容，避免 WorkBuddy 运行时生成 Python 缓存等资源变化导致 `unknown`；此结果用于来源归因，不代表整个应用包完整性验证通过。Intel 与 ARM 使用相同规则。
 - Windows：优先读取 Package Family Name；普通桌面程序使用系统 `WinVerifyTrust` 校验 Authenticode，再同时匹配已登记的签名证书 SHA-256 与安装路径，命中时为 `high`。
 - Linux：按祖先进程可执行文件路径或进程名降级识别，分别为 `medium` / `low`。
-- 无规则命中或签名与已登记身份不一致时返回 `unknown`，不会仅凭疑似路径冒充高可信结果。
+- macOS/Windows 的签名变化、未登记或验签失败不会否决明确产品路径（`medium`）或进程名（`low`）；已验证并登记的身份才提升为 `high`。无证据或产品证据冲突时返回 `unknown`。
 
-当前 Windows 身份登记来自公开发行渠道：Codex 使用 Microsoft Store 的 Package Family Name；Doubao 与 WorkBuddy 使用各自官方 Windows 安装包中的 Authenticode 叶证书指纹。客户端换证书后会返回 `unknown`，需要先在真实 Windows 环境核验新证书再更新规则，不会自动信任同名进程。
+macOS 当前可区分 `doubao`、`doubaoWork`、`workbuddy` 和 `codex`。Doubao Work 使用独立智能体来源值 `doubaoWork`，其官方应用身份为 Bundle ID `com.work.pc.doubao`、Team ID `96L78H6LMH`。
+
+`process-ancestry-v4` 补齐飞书内豆包工作 Mac/Windows 本地、豆包工作与工作伙伴 Linux 云端、WorkBuddy 国内/国际 Web 及 Mac 执行工具受限时的 low 置信度组合兜底；WorkBuddyAI.exe 的 Windows 国际版使用独立证书规则。当前版本为 `process-ancestry-v6`，签名变化与探测超时的处理见[来源识别稳定性](docs/attribution-stability.md)。新增证据类型为 `macos_signed_host_runtime`、`windows_signed_host_runtime`、`macos_runtime_environment`、`linux_runtime_environment`。样本回放结论见[识别覆盖](docs/runtime-host-coverage.md)。
+
+当前 Windows 身份登记来自公开发行渠道：Codex 使用 Microsoft Store 的 Package Family Name；Doubao、Doubao Work 与 WorkBuddy 使用各自官方 Windows 发行包中的 Authenticode 叶证书指纹。Doubao 与 Doubao Work 当前共享同一发布者证书，检测时还必须命中各自的可执行文件路径/名称，因此会分别返回 `doubao` 与 `doubaoWork`。客户端换证书后仍可按已有路径或进程名降级归因；需要核验并登记新身份才能恢复签名 `high` 置信度。来源字段不用于鉴权。
 
 每次业务请求会覆盖以下 Header：
 
 ```text
-X-Qfei-Request-Source-Type
-X-Qfei-Channel-Type
+X-Qfei-Channel-Type: cli
+X-Qfei-Agent-Source-Type: doubao | doubaoWork | doubaoWorkmates | workbuddy | codex | unknown
+X-Qfei-Product-Code: contract
 X-Qfei-Evidence-Type
 X-Qfei-Channel-Confidence
 X-Qfei-Detector-Version
@@ -316,6 +323,15 @@ X-Qfei-Rule-Id
 ```
 
 业务 Header 只包含归一化后的来源和证据字段，不包含 PID、完整进程路径或命令行参数。`environment inspect --include-processes` 仅用于用户主动执行的本地诊断。
+
+每个 OpenPlatform 逻辑请求还会生成标准 W3C Trace Context，并覆盖发送：
+
+```text
+traceparent: 00-<32 位 trace_id>-<16 位 span_id>-01
+X-Log-Id: <与 traceparent 相同的 trace_id>
+```
+
+只读网络重试或 Token 刷新后的请求重放继续使用同一个 `trace_id`，每次实际 HTTP attempt 使用新的 `span_id`。成功请求的本地 INFO 日志带 `trace_id`；请求失败时，最终错误信息也带 `trace_id=<值>`。它只用于日志与链路关联，不参与鉴权、幂等或来源可信度判断。网关和下游服务仍需保留 `traceparent` 才能形成完整的跨服务 Trace。
 
 ### Output Formats
 

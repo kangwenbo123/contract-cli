@@ -72,7 +72,7 @@ func platformApplicationIdentities(chain []Process) ([]ApplicationIdentity, []st
 			identities = append(identities, identity)
 			continue
 		}
-		if rule == nil || strings.TrimSpace(current.Executable) == "" {
+		if (rule == nil && !windowsFeishuExecutable(current.Executable)) || strings.TrimSpace(current.Executable) == "" {
 			continue
 		}
 

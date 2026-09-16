@@ -38,6 +38,8 @@ func TestCommandReferenceDocumentCoversCurrentSupportedCommands(t *testing.T) {
 		"每一次实际业务 HTTP 请求发送前都会重新探测",
 		"不写入 profile、OAuth Token",
 		"X-Qfei-Channel-Type",
+		"X-Qfei-Agent-Source-Type",
+		"X-Qfei-Product-Code",
 		"contract-cli contract search",
 		"contract-cli contract search-v2",
 		"contract-cli contract get",

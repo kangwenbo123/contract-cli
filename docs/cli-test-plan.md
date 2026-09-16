@@ -1629,11 +1629,11 @@ go build -trimpath -o dist/local-test/contract-cli ./cmd/contract-cli
 ./dist/local-test/contract-cli environment inspect --output json --include-processes
 ```
 
-在普通终端直接执行时通常应得到 `channel_type=unknown`。这不是失败，因为父进程链里只有 Terminal、Shell 等进程。
+在普通终端直接执行时通常应得到 `channel_type=cli`、`agent_source_type=unknown`。这不是失败，因为父进程链里只有 Terminal、Shell 等进程。
 
 ### 17.2 从真实客户端调用
 
-分别让 Doubao 和 WorkBuddy 直接执行测试二进制的绝对路径：
+分别让 Doubao、Doubao Work、WorkBuddy 和 Codex 直接执行测试二进制的绝对路径：
 
 ```text
 <仓库绝对路径>/dist/local-test/contract-cli environment inspect --output json --include-processes
@@ -1641,8 +1641,10 @@ go build -trimpath -o dist/local-test/contract-cli ./cmd/contract-cli
 
 预期结果：
 
-- Doubao 调用返回 `channel_type=doubao`。
-- WorkBuddy 调用返回 `channel_type=workbuddy`。
+- Doubao 调用返回 `channel_type=cli`、`agent_source_type=doubao`。
+- Doubao Work 调用返回 `channel_type=cli`、`agent_source_type=doubaoWork`。
+- WorkBuddy 调用返回 `channel_type=cli`、`agent_source_type=workbuddy`。
+- Codex 调用返回 `channel_type=cli`、`agent_source_type=codex`。
 - macOS 官方签名匹配时返回 `evidence_type=macos_code_signature`、`confidence=high`。
 - Windows 商店包身份匹配时返回 `evidence_type=windows_package_identity`、`confidence=high`。
 - Windows 普通桌面程序通过 WinVerifyTrust 且证书指纹与路径均匹配时，返回 `evidence_type=windows_authenticode`、`confidence=high`。
@@ -1652,23 +1654,35 @@ go build -trimpath -o dist/local-test/contract-cli ./cmd/contract-cli
 
 ### 17.3 真实业务请求 Hook
 
-使用已经授权的 profile，从 Doubao 和 WorkBuddy 分别调用同一条只读业务命令，并在 Higress/OpenPlatform 接收端检查：
+使用已经授权的 profile，从 Doubao、Doubao Work、WorkBuddy 和 Codex 分别调用同一条只读业务命令，并在 Higress/OpenPlatform 接收端检查：
 
 ```text
-X-Qfei-Request-Source-Type: cli
-X-Qfei-Channel-Type: doubao | workbuddy | codex | unknown
+X-Qfei-Channel-Type: cli
+X-Qfei-Agent-Source-Type: doubao | doubaoWork | workbuddy | codex | unknown
+X-Qfei-Product-Code: contract
 X-Qfei-Evidence-Type: ...
 X-Qfei-Channel-Confidence: ...
-X-Qfei-Detector-Version: process-ancestry-v2
+X-Qfei-Detector-Version: process-ancestry-v6
 X-Qfei-Rule-Id: ...
+traceparent: 00-<32 位 trace_id>-<16 位 span_id>-01
+X-Log-Id: <与 traceparent 相同的 trace_id>
 ```
 
 检查点：
 
 - 每个实际 HTTP attempt 前探测函数调用一次。
 - 请求重试或 Token 刷新后的业务请求重放会再次探测。
+- 单次完整探测共享 5 秒预算，卡住时终止并回收探测 helper；macOS/Linux 的签名子进程也应终止。预算之外只允许短暂的进程回收开销。
+- 探测自身超时或失败：保留本次已收到的完整报告；没有有效报告时，该次请求携带 `agent-source-type=unknown`、`evidence-type=none`、`confidence=unknown`，保留 `channel-type=cli`、`product-code=contract` 和 detector version，清除旧 Rule ID；业务照常发送，不增加业务重试。
+- 超时之后下一次请求必须重新探测；用户主动取消则不发业务请求。普通请求和流式请求均覆盖。
 - 调用环境没有写入 profile、OAuth Token 或其他持久化配置。
 - Header 不包含 PID、进程路径或完整命令行。
+- `traceparent` 符合 W3C 格式，且其中的 `trace_id` 与 `X-Log-Id` 完全相同。
+- 同一逻辑请求发生网络重试或 Token 刷新重放时，所有 attempt 的 `trace_id` 相同、`span_id` 不同。
+- 两次独立业务命令产生不同的 `trace_id`。
+- 服务端返回错误时，CLI 最终错误信息包含 `trace_id=<值>`，可复制该值检索日志或 Trace。
+
+CLI 单元测试只能保证 Header 已写入出站请求。完整链路验收还需在部署环境中用该 `trace_id` 检查：OpenPlatform 入口日志的 `X-Log-Id` 等于该值，并且 Trace 查询能返回相同 `trace_id` 的下游 spans；若不一致，应检查 Higress 和服务间 HTTP 客户端是否保留 `traceparent`。
 
 ### 17.4 不发布 npm 的本地安装包
 
@@ -1693,16 +1707,16 @@ go build -trimpath -o dist/local-test/contract-cli.exe ./cmd/contract-cli
 & (Resolve-Path ./dist/local-test/contract-cli.exe) environment inspect --output json --include-processes
 ```
 
-先在普通 PowerShell 运行一次，通常应为 `channel_type=unknown`。然后分别让 Doubao、WorkBuddy 或 Codex 直接调用同一个 `contract-cli.exe` 绝对路径。诊断重点：
+先在普通 PowerShell 运行一次，通常应为 `channel_type=cli`、`agent_source_type=unknown`。然后分别让 Doubao、Doubao Work、WorkBuddy 或 Codex 直接调用同一个 `contract-cli.exe` 绝对路径。诊断重点：
 
 - `matched_process` 应落在真实客户端祖先进程，而不是 PowerShell、cmd 或 Terminal。
 - Codex 商店包应输出 `application.package_family_name=OpenAI.Codex_2p2nqsd0c76g0`。
-- Doubao/WorkBuddy 应输出 `application.signature_valid=true`、非空 `publisher` 与 `certificate_sha256`。
-- 如出现 `windows_authenticode_mismatch`，保留完整 JSON 并用以下命令核对实际父进程文件；客户端换证书后必须更新登记指纹。
+- Doubao/Doubao Work/WorkBuddy 命中已登记的有效签名时，应输出 `application.signature_valid=true`、非空 `publisher` 与 `certificate_sha256`，置信度为 high；路径或进程名兜底为 medium/low。
+- 如出现 `windows_authenticode_mismatch`，保留完整 JSON 并用以下命令核对实际父进程文件；客户端换证书后仍可按明确路径或进程名降级归因，核验并登记新身份后才恢复签名 high 置信度。
 
 ```powershell
 Get-AuthenticodeSignature "<matched_process.executable>" | Format-List Status,StatusMessage,SignerCertificate
 (Get-Item "<matched_process.executable>").VersionInfo | Format-List CompanyName,ProductName,FileVersion,OriginalFilename
 ```
 
-最后从真实客户端执行一条已授权的只读业务命令，在 Higress/OpenPlatform 接收端核对 17.3 的六个 Header；只运行 `environment inspect` 不能证明业务 Hook 已透传。
+最后从真实客户端执行一条已授权的只读业务命令，在 Higress/OpenPlatform 接收端核对 17.3 的七个来源 Header 和两个 Trace Header；只运行 `environment inspect` 不能证明业务 Hook 已透传。

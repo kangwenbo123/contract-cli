@@ -62,7 +62,11 @@ func enclosingAppBundles(executable string) []string {
 }
 
 func inspectSignedBundle(bundlePath string, processDepth int) (ApplicationIdentity, error) {
-	verify := exec.Command("/usr/bin/codesign", "--verify", "--strict", "--verbose=2", bundlePath)
+	// Host attribution verifies signed code identity, not mutable resources:
+	// WorkBuddy's Python shim may create __pycache__ inside the signed bundle.
+	// Keep code verification and Analyze's bundle/team match; -d alone is not
+	// signature verification.
+	verify := exec.Command("/usr/bin/codesign", "--verify", "--strict", "--ignore-resources", "--verbose=2", bundlePath)
 	if output, err := verify.CombinedOutput(); err != nil {
 		return ApplicationIdentity{
 			ProcessDepth: processDepth,

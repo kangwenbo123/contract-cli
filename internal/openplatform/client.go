@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"cn.qfei/contract-cli/internal/config"
+	"cn.qfei/contract-cli/internal/tracecontext"
 )
 
 type AuthProvider interface {
@@ -75,6 +76,7 @@ type Response struct {
 	StatusCode int
 	Headers    http.Header
 	Body       []byte
+	TraceID    string
 }
 
 type HTTPStatusError struct {
@@ -96,6 +98,22 @@ func (e *UncertainWriteError) Error() string {
 }
 
 func (e *UncertainWriteError) Unwrap() error {
+	return e.Cause
+}
+
+// TraceError preserves the concrete request error through Unwrap while adding
+// the trace ID that operators can use for correlation if the request reached
+// the server.
+type TraceError struct {
+	TraceID string
+	Cause   error
+}
+
+func (e *TraceError) Error() string {
+	return fmt.Sprintf("%s (trace_id=%s)", e.Cause, e.TraceID)
+}
+
+func (e *TraceError) Unwrap() error {
 	return e.Cause
 }
 
@@ -166,8 +184,6 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 		headers.Set("Content-Type", "application/json")
 	}
 
-	c.logger.Info("open platform request started", "method", method, "path", request.Path, "identity", requestContext.Identity)
-
 	operation := request.OperationKind
 	if operation == "" {
 		operation = OperationWrite
@@ -178,12 +194,18 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 	if operation != OperationRead && operation != OperationWrite {
 		return Response{}, fmt.Errorf("unsupported open platform operation kind %q", operation)
 	}
+	requestTrace, err := tracecontext.NewRequestTrace()
+	if err != nil {
+		return Response{}, fmt.Errorf("create open platform request trace: %w", err)
+	}
+
+	c.logger.Info("open platform request started", "method", method, "path", request.Path, "identity", requestContext.Identity, "trace_id", requestTrace.TraceID)
 
 	refreshed := false
 	for attempt := 0; ; attempt++ {
-		response, requestErr := c.doOnce(ctx, method, fullURL, headers, request)
+		response, requestErr := c.doOnce(ctx, method, fullURL, headers, request, requestTrace)
 		if requestErr == nil {
-			c.logger.Info("open platform request completed", "method", method, "path", request.Path, "status_code", response.StatusCode)
+			c.logger.Info("open platform request completed", "method", method, "path", request.Path, "status_code", response.StatusCode, "trace_id", requestTrace.TraceID)
 			return response, nil
 		}
 
@@ -192,33 +214,33 @@ func (c *Client) Do(ctx context.Context, requestContext RequestContext, request 
 			if isTrustedTokenExpired(response, statusErr) && !refreshed && requestContext.RefreshAccessToken != nil {
 				newToken, refreshErr := requestContext.RefreshAccessToken(ctx, requestContext.AccessToken)
 				if refreshErr != nil {
-					return response, fmt.Errorf("refresh access token: %w", refreshErr)
+					return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("refresh access token: %w", refreshErr))
 				}
 				if strings.TrimSpace(newToken) == "" {
-					return response, fmt.Errorf("refresh access token returned an empty token")
+					return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("refresh access token returned an empty token"))
 				}
 				requestContext.AccessToken = newToken
 				headers.Set("Authorization", "Bearer "+newToken)
 				refreshed = true
 				if request.BodyReader != nil {
-					return response, errors.New("access token refreshed, but streaming request body cannot be replayed; retry the command")
+					return response, wrapTraceError(requestTrace.TraceID, errors.New("access token refreshed, but streaming request body cannot be replayed; retry the command"))
 				}
 				continue
 			}
 			if operation == OperationWrite && statusErr.StatusCode >= http.StatusInternalServerError {
-				return response, &UncertainWriteError{Cause: statusErr}
+				return response, wrapTraceError(requestTrace.TraceID, &UncertainWriteError{Cause: statusErr})
 			}
-			return response, statusErr
+			return response, wrapTraceError(requestTrace.TraceID, statusErr)
 		}
 
 		if operation == OperationWrite {
-			return response, &UncertainWriteError{Cause: requestErr}
+			return response, wrapTraceError(requestTrace.TraceID, &UncertainWriteError{Cause: requestErr})
 		}
 		if attempt < maxReadNetworkRetries && request.BodyReader == nil && isRetryableNetworkError(requestErr) {
-			c.logger.Warn("retrying open platform read after temporary network error", "method", method, "path", request.Path)
+			c.logger.Warn("retrying open platform read after temporary network error", "method", method, "path", request.Path, "trace_id", requestTrace.TraceID)
 			continue
 		}
-		return response, requestErr
+		return response, wrapTraceError(requestTrace.TraceID, requestErr)
 	}
 }
 
@@ -229,34 +251,40 @@ func isTrustedTokenExpired(response Response, statusErr *HTTPStatusError) bool {
 		response.Headers.Get(authenticationErrorHeader) == tokenExpiredErrorType
 }
 
-func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers http.Header, request Request) (Response, error) {
+func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers http.Header, request Request, requestTrace tracecontext.RequestTrace) (Response, error) {
+	response := Response{TraceID: requestTrace.TraceID}
 	bodyReader := io.Reader(bytes.NewReader(request.Body))
 	if request.BodyReader != nil {
 		bodyReader = request.BodyReader
 	}
 	httpRequest, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
 	if err != nil {
-		return Response{}, fmt.Errorf("build open platform request: %w", err)
+		return response, fmt.Errorf("build open platform request: %w", err)
 	}
 	httpRequest.Header = headers.Clone()
 	if err := c.runBeforeRequestHooks(ctx, httpRequest); err != nil {
-		return Response{}, err
+		return response, err
+	}
+	if err := requestTrace.Apply(httpRequest.Header); err != nil {
+		return response, fmt.Errorf("apply open platform request trace: %w", err)
 	}
 
 	resp, err := c.httpClient.Do(httpRequest)
 	if err != nil {
-		return Response{}, fmt.Errorf("perform open platform request: %w", err)
+		return response, fmt.Errorf("perform open platform request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Response{}, fmt.Errorf("read open platform response: %w", err)
+		return response, fmt.Errorf("read open platform response: %w", err)
 	}
-	response := Response{StatusCode: resp.StatusCode, Headers: resp.Header.Clone(), Body: body}
+	response.StatusCode = resp.StatusCode
+	response.Headers = resp.Header.Clone()
+	response.Body = body
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		httpErr := &HTTPStatusError{StatusCode: resp.StatusCode, ErrorType: responseErrorType(body), Body: body}
-		c.logger.Error("open platform request failed", "method", method, "path", request.Path, "status_code", resp.StatusCode, "error_type", httpErr.ErrorType)
+		c.logger.Error("open platform request failed", "method", method, "path", request.Path, "status_code", resp.StatusCode, "error_type", httpErr.ErrorType, "trace_id", requestTrace.TraceID)
 		return response, httpErr
 	}
 	return response, nil
@@ -280,6 +308,16 @@ func isRetryableNetworkError(err error) bool {
 	}
 	var networkErr net.Error
 	return errors.As(err, &networkErr) && (networkErr.Timeout() || networkErr.Temporary())
+}
+
+func wrapTraceError(traceID string, err error) error {
+	if err == nil || strings.TrimSpace(traceID) == "" {
+		return err
+	}
+	if traced, ok := err.(*TraceError); ok && traced.TraceID == traceID {
+		return err
+	}
+	return &TraceError{TraceID: traceID, Cause: err}
 }
 
 func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, request Request, writer io.Writer) (Response, error) {
@@ -315,7 +353,13 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 		headers.Set("Content-Type", "application/json")
 	}
 
-	c.logger.Info("open platform stream request started", "method", method, "path", request.Path, "identity", requestContext.Identity)
+	requestTrace, err := tracecontext.NewRequestTrace()
+	if err != nil {
+		return Response{}, fmt.Errorf("create open platform request trace: %w", err)
+	}
+	response := Response{TraceID: requestTrace.TraceID}
+
+	c.logger.Info("open platform stream request started", "method", method, "path", request.Path, "identity", requestContext.Identity, "trace_id", requestTrace.TraceID)
 
 	bodyReader := io.Reader(bytes.NewReader(request.Body))
 	if request.BodyReader != nil {
@@ -323,43 +367,44 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 	}
 	httpRequest, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
 	if err != nil {
-		c.logger.Error("build open platform stream request failed", "method", method, "path", request.Path, "error", err.Error())
-		return Response{}, fmt.Errorf("build open platform request: %w", err)
+		c.logger.Error("build open platform stream request failed", "method", method, "path", request.Path, "error", err.Error(), "trace_id", requestTrace.TraceID)
+		return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("build open platform request: %w", err))
 	}
 	httpRequest.Header = headers.Clone()
 	if err := c.runBeforeRequestHooks(ctx, httpRequest); err != nil {
-		return Response{}, err
+		return response, wrapTraceError(requestTrace.TraceID, err)
+	}
+	if err := requestTrace.Apply(httpRequest.Header); err != nil {
+		return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("apply open platform request trace: %w", err))
 	}
 
 	resp, err := c.httpClient.Do(httpRequest)
 	if err != nil {
-		c.logger.Error("perform open platform stream request failed", "method", method, "path", request.Path, "error", err.Error())
-		return Response{}, fmt.Errorf("perform open platform request: %w", err)
+		c.logger.Error("perform open platform stream request failed", "method", method, "path", request.Path, "error", err.Error(), "trace_id", requestTrace.TraceID)
+		return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("perform open platform request: %w", err))
 	}
 	defer resp.Body.Close()
 
-	response := Response{
-		StatusCode: resp.StatusCode,
-		Headers:    resp.Header.Clone(),
-	}
+	response.StatusCode = resp.StatusCode
+	response.Headers = resp.Header.Clone()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
-			c.logger.Error("read open platform stream error response failed", "method", method, "path", request.Path, "error", readErr.Error())
-			return response, fmt.Errorf("read open platform response: %w", readErr)
+			c.logger.Error("read open platform stream error response failed", "method", method, "path", request.Path, "error", readErr.Error(), "trace_id", requestTrace.TraceID)
+			return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("read open platform response: %w", readErr))
 		}
 		response.Body = body
 		err = fmt.Errorf("open platform request failed with status %d: %s", resp.StatusCode, responseSnippet(body))
-		c.logger.Error("open platform stream request failed", "method", method, "path", request.Path, "status_code", resp.StatusCode, "error", err.Error())
-		return response, err
+		c.logger.Error("open platform stream request failed", "method", method, "path", request.Path, "status_code", resp.StatusCode, "error", err.Error(), "trace_id", requestTrace.TraceID)
+		return response, wrapTraceError(requestTrace.TraceID, err)
 	}
 
 	if _, err := io.Copy(writer, resp.Body); err != nil {
-		c.logger.Error("copy open platform stream response failed", "method", method, "path", request.Path, "error", err.Error())
-		return response, fmt.Errorf("copy open platform response: %w", err)
+		c.logger.Error("copy open platform stream response failed", "method", method, "path", request.Path, "error", err.Error(), "trace_id", requestTrace.TraceID)
+		return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("copy open platform response: %w", err))
 	}
 
-	c.logger.Info("open platform stream request completed", "method", method, "path", request.Path, "status_code", resp.StatusCode)
+	c.logger.Info("open platform stream request completed", "method", method, "path", request.Path, "status_code", resp.StatusCode, "trace_id", requestTrace.TraceID)
 	return response, nil
 }
 

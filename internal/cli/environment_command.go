@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -11,20 +12,20 @@ import (
 	"cn.qfei/contract-cli/internal/invocation"
 )
 
-func (a *App) runEnvironment(args []string) error {
+func (a *App) runEnvironment(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return errors.New("missing environment subcommand")
 	}
 
 	switch args[0] {
 	case "inspect":
-		return a.runEnvironmentInspect(args[1:])
+		return a.runEnvironmentInspect(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown environment subcommand %q", args[0])
 	}
 }
 
-func (a *App) runEnvironmentInspect(args []string) error {
+func (a *App) runEnvironmentInspect(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("environment inspect", flag.ContinueOnError)
 	flags.SetOutput(a.stderr)
 
@@ -44,7 +45,10 @@ func (a *App) runEnvironmentInspect(args []string) error {
 		return errors.New("--depth must be between 1 and 128")
 	}
 
-	report := a.inspectEnvironment(maxDepth)
+	report := a.inspectEnvironment(ctx, maxDepth)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !includeProcesses {
 		report.Processes = nil
 	}
@@ -64,8 +68,9 @@ func (a *App) runEnvironmentInspect(args []string) error {
 
 func writeEnvironmentReport(writer io.Writer, report invocation.Result, includeProcesses bool) error {
 	lines := []string{
-		"Request Source: " + report.RequestSourceType,
 		"Channel: " + report.ChannelType,
+		"Agent Source: " + report.AgentSourceType,
+		"Product: " + report.ProductCode,
 		"Evidence: " + report.EvidenceType,
 		"Confidence: " + report.Confidence,
 		"Platform: " + report.Platform,

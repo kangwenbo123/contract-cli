@@ -8,13 +8,17 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"cn.qfei/contract-cli/internal/config"
 	"cn.qfei/contract-cli/internal/openplatform"
+	"cn.qfei/contract-cli/internal/tracecontext"
 )
+
+var traceparentPattern = regexp.MustCompile(`^00-([0-9a-f]{32})-([0-9a-f]{16})-01$`)
 
 func TestClientDoAddsAuthorizationAndQuery(t *testing.T) {
 	t.Parallel()
@@ -75,6 +79,46 @@ func TestClientDoAddsAuthorizationAndQuery(t *testing.T) {
 	}
 }
 
+func TestClientDoAddsCanonicalTraceHeaders(t *testing.T) {
+	t.Parallel()
+
+	var receivedTraceID string
+	client := openplatform.New(openplatform.Options{
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			matches := traceparentPattern.FindStringSubmatch(req.Header.Get(tracecontext.HeaderTraceparent))
+			if matches == nil {
+				t.Fatalf("traceparent = %q", req.Header.Get(tracecontext.HeaderTraceparent))
+			}
+			receivedTraceID = matches[1]
+			if got := req.Header.Get(tracecontext.HeaderLogID); got != receivedTraceID {
+				t.Fatalf("X-Log-Id = %q, want trace id %q", got, receivedTraceID)
+			}
+			return jsonResponse(`{"code":0}`), nil
+		})},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	response, err := client.Do(context.Background(), openplatform.RequestContext{
+		Identity: config.IdentityUser, BaseURL: "https://open.qtech.cn", AccessToken: "user-token",
+	}, openplatform.Request{
+		Method: http.MethodGet,
+		Path:   "/open-apis/contract/v1/mcp/contracts/search",
+		Headers: http.Header{
+			tracecontext.HeaderTraceparent: {"00-11111111111111111111111111111111-2222222222222222-01"},
+			tracecontext.HeaderLogID:       {"caller-supplied-log-id"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Do() error = %v", err)
+	}
+	if response.TraceID != receivedTraceID {
+		t.Fatalf("response trace id = %q, want %q", response.TraceID, receivedTraceID)
+	}
+	if receivedTraceID == "11111111111111111111111111111111" {
+		t.Fatal("caller-supplied trace headers were not replaced")
+	}
+}
+
 func TestClientDoRunsBeforeRequestHookForEveryAttempt(t *testing.T) {
 	t.Parallel()
 
@@ -84,14 +128,14 @@ func TestClientDoRunsBeforeRequestHookForEveryAttempt(t *testing.T) {
 	client := openplatform.New(openplatform.Options{
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				receivedChannels = append(receivedChannels, req.Header.Get("X-Qfei-Channel-Type"))
+				receivedChannels = append(receivedChannels, req.Header.Get("X-Qfei-Agent-Source-Type"))
 				return jsonResponse(`{"code":0}`), nil
 			}),
 		},
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		BeforeRequestHooks: []openplatform.BeforeRequestHook{
 			func(_ context.Context, req *http.Request) error {
-				req.Header.Set("X-Qfei-Channel-Type", channels[hookCalls])
+				req.Header.Set("X-Qfei-Agent-Source-Type", channels[hookCalls])
 				hookCalls++
 				return nil
 			},
@@ -127,8 +171,12 @@ func TestClientDoStreamRunsBeforeRequestHook(t *testing.T) {
 	client := openplatform.New(openplatform.Options{
 		HTTPClient: &http.Client{
 			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-				if got := req.Header.Get("X-Qfei-Channel-Type"); got != "doubao" {
+				if got := req.Header.Get("X-Qfei-Agent-Source-Type"); got != "doubao" {
 					t.Fatalf("channel header = %q, want doubao", got)
+				}
+				matches := traceparentPattern.FindStringSubmatch(req.Header.Get(tracecontext.HeaderTraceparent))
+				if matches == nil || req.Header.Get(tracecontext.HeaderLogID) != matches[1] {
+					t.Fatalf("stream trace headers = traceparent %q, X-Log-Id %q", req.Header.Get(tracecontext.HeaderTraceparent), req.Header.Get(tracecontext.HeaderLogID))
 				}
 				return &http.Response{
 					StatusCode: http.StatusOK,
@@ -142,7 +190,7 @@ func TestClientDoStreamRunsBeforeRequestHook(t *testing.T) {
 		BeforeRequestHooks: []openplatform.BeforeRequestHook{
 			func(_ context.Context, req *http.Request) error {
 				hookCalls++
-				req.Header.Set("X-Qfei-Channel-Type", "doubao")
+				req.Header.Set("X-Qfei-Agent-Source-Type", "doubao")
 				return nil
 			},
 		},
@@ -154,12 +202,16 @@ func TestClientDoStreamRunsBeforeRequestHook(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if _, err := client.DoStream(context.Background(), requestContext, openplatform.Request{
+	response, err := client.DoStream(context.Background(), requestContext, openplatform.Request{
 		Method:         http.MethodGet,
 		Path:           "/open-apis/contract/v1/files/file-1/download",
 		IdentityPolicy: openplatform.IdentityPolicyAppOnly,
-	}, &output); err != nil {
+	}, &output)
+	if err != nil {
 		t.Fatalf("DoStream() error = %v", err)
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(response.TraceID) {
+		t.Fatalf("response trace id = %q", response.TraceID)
 	}
 	if hookCalls != 1 {
 		t.Fatalf("hook calls = %d, want 1", hookCalls)
@@ -665,11 +717,22 @@ func TestRequestContextRequiresConfiguredBaseURLAndToken(t *testing.T) {
 
 func TestClientDoRetriesClassifiedReadNetworkErrorOnce(t *testing.T) {
 	calls, hookCalls := 0, 0
+	traceIDs := make([]string, 0, 2)
+	spanIDs := make([]string, 0, 2)
 	client := openplatform.New(openplatform.Options{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			calls++
 			if req.Header.Get("X-Attempt") != fmt.Sprintf("%d", calls) {
 				t.Fatalf("attempt header = %q, want %d", req.Header.Get("X-Attempt"), calls)
+			}
+			matches := traceparentPattern.FindStringSubmatch(req.Header.Get(tracecontext.HeaderTraceparent))
+			if matches == nil {
+				t.Fatalf("attempt %d traceparent = %q", calls, req.Header.Get(tracecontext.HeaderTraceparent))
+			}
+			traceIDs = append(traceIDs, matches[1])
+			spanIDs = append(spanIDs, matches[2])
+			if req.Header.Get(tracecontext.HeaderLogID) != matches[1] {
+				t.Fatalf("attempt %d X-Log-Id = %q, want %q", calls, req.Header.Get(tracecontext.HeaderLogID), matches[1])
 			}
 			if calls == 1 {
 				return nil, temporaryNetworkError{}
@@ -687,6 +750,12 @@ func TestClientDoRetriesClassifiedReadNetworkErrorOnce(t *testing.T) {
 	})
 	if err != nil || calls != 2 || hookCalls != 2 {
 		t.Fatalf("err=%v calls=%d hookCalls=%d", err, calls, hookCalls)
+	}
+	if traceIDs[0] != traceIDs[1] {
+		t.Fatalf("retry trace ids = %#v, want one logical trace", traceIDs)
+	}
+	if spanIDs[0] == spanIDs[1] {
+		t.Fatalf("retry span ids = %#v, want one span per HTTP attempt", spanIDs)
 	}
 }
 
@@ -725,7 +794,7 @@ func TestClientDoDoesNotRefreshOnGenericUnauthorized(t *testing.T) {
 	client := openplatform.New(openplatform.Options{HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return responseWithStatus(http.StatusUnauthorized, `{"code":401}`), nil
 	})}})
-	_, err := client.Do(context.Background(), openplatform.RequestContext{
+	response, err := client.Do(context.Background(), openplatform.RequestContext{
 		BaseURL: "https://example.test", AccessToken: "token", Identity: config.IdentityUser,
 		RefreshAccessToken: func(context.Context, string) (string, error) {
 			refreshCalls++
@@ -736,16 +805,31 @@ func TestClientDoDoesNotRefreshOnGenericUnauthorized(t *testing.T) {
 	if !errors.As(err, &statusErr) || refreshCalls != 0 {
 		t.Fatalf("err=%v refreshCalls=%d", err, refreshCalls)
 	}
+	if response.TraceID == "" || !strings.Contains(err.Error(), "trace_id="+response.TraceID) {
+		t.Fatalf("response trace id = %q, error = %v", response.TraceID, err)
+	}
+	var traceErr *openplatform.TraceError
+	if !errors.As(err, &traceErr) || traceErr.TraceID != response.TraceID {
+		t.Fatalf("trace error = %#v, response trace id = %q", traceErr, response.TraceID)
+	}
 }
 
 func TestClientDoRefreshesOnceOnExplicitTokenExpired(t *testing.T) {
 	calls, refreshCalls, hookCalls := 0, 0, 0
+	traceIDs := make([]string, 0, 2)
+	spanIDs := make([]string, 0, 2)
 	client := openplatform.New(openplatform.Options{
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			calls++
 			if req.Header.Get("X-Attempt") != fmt.Sprintf("%d", calls) {
 				t.Fatalf("attempt header = %q, want %d", req.Header.Get("X-Attempt"), calls)
 			}
+			matches := traceparentPattern.FindStringSubmatch(req.Header.Get(tracecontext.HeaderTraceparent))
+			if matches == nil {
+				t.Fatalf("attempt %d traceparent = %q", calls, req.Header.Get(tracecontext.HeaderTraceparent))
+			}
+			traceIDs = append(traceIDs, matches[1])
+			spanIDs = append(spanIDs, matches[2])
 			if calls == 1 {
 				return responseWithAuthenticationError(http.StatusUnauthorized, "token_expired", `{"code":401,"data":{"error_type":"token_expired"}}`), nil
 			}
@@ -772,6 +856,9 @@ func TestClientDoRefreshesOnceOnExplicitTokenExpired(t *testing.T) {
 	})
 	if err != nil || calls != 2 || refreshCalls != 1 || hookCalls != 2 {
 		t.Fatalf("err=%v calls=%d refreshCalls=%d hookCalls=%d", err, calls, refreshCalls, hookCalls)
+	}
+	if traceIDs[0] != traceIDs[1] || spanIDs[0] == spanIDs[1] {
+		t.Fatalf("token refresh trace ids = %#v, span ids = %#v", traceIDs, spanIDs)
 	}
 }
 

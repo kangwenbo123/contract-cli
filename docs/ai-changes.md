@@ -1,5 +1,15 @@
 # AI 变更记录
 
+- 2026-09-02
+  变更摘要：为 CLI 的所有 OpenPlatform 业务请求增加请求级 Trace 关联。
+  涉及文件/模块：`internal/tracecontext`、`internal/openplatform` 统一客户端、README、命令参考与测试计划。
+  关键逻辑/决策：每个逻辑请求使用加密安全随机数生成 W3C `trace_id`，每个实际 HTTP attempt 生成独立 `span_id`；统一覆盖发送 `traceparent` 和与其同值的 `X-Log-Id`，网络重试与 Token 刷新重放保持同一 Trace；响应对象和最终错误保留 `trace_id`，且不改变已有错误类型的 `errors.As` 判断。Trace ID 仅用于可观测性，不用于鉴权、幂等或客户端来源证明。
+
+- 2026-09-01
+  变更摘要：将 Doubao Work 纳入运行环境识别并作为独立渠道透传。
+  涉及文件/模块：`internal/invocation` 客户端规则与测试、运行环境识别 README 和专项测试文档。
+  关键逻辑/决策：macOS 基于官方应用通过系统验签得到的 Bundle ID `com.work.pc.doubao` 与 Team ID `96L78H6LMH`；Windows 基于官方 2.27.10 x64、ARM64 发行包中 `DoubaoWork.exe` 的有效 Authenticode 签名登记叶证书 SHA-256，并要求证书与可执行文件路径/名称同时命中。新增智能体来源值 `doubaoWork`、`client.doubao_work.signed-bundle` 与 `client.doubao_work.authenticode`；即使 Doubao 与 Doubao Work 当前共享发布者证书，也通过各自路径规则独立分类。
+
 - 2026-08-12
   变更摘要：将下一版 contract-cli 版本更新为 `1.7.0`。
   涉及文件/模块：`package.json`、发布版本元数据。
