@@ -17,6 +17,10 @@ const (
 	productionOpenPlatformURL    = "https://open.qfei.cn"
 	productionAccountOrigin      = "https://myaccount.qfei.cn"
 	productionOpenPlatformOrigin = "https://open.qfei.cn"
+	testE2EEnvironment           = "test"
+	testE2EOpenPlatformURL       = "https://test-open.qtech.cn"
+	testE2EAccountOrigin         = "https://test-myaccount.qtech.cn"
+	testE2EOpenPlatformOrigin    = "https://test-open.qtech.cn"
 )
 
 var blockedProductionBuildHosts = map[string]struct{}{
@@ -24,7 +28,15 @@ var blockedProductionBuildHosts = map[string]struct{}{
 	"dev-myaccount.qtech.cn": {},
 }
 
+var allowedTestE2EHosts = map[string]struct{}{
+	"test-open.qtech.cn":      {},
+	"test-myaccount.qtech.cn": {},
+}
+
 func validateProductionProfile(profile config.Profile) error {
+	if testE2EBuild {
+		return validateTestE2EProfile(profile)
+	}
 	if strings.TrimSpace(profile.Environment) != productionEnvironment {
 		return productionProfileError(profile.Name)
 	}
@@ -56,6 +68,34 @@ func validateProductionProfile(profile config.Profile) error {
 	return nil
 }
 
+func validateTestE2EProfile(profile config.Profile) error {
+	if strings.TrimSpace(profile.Environment) != testE2EEnvironment {
+		return productionProfileError(profile.Name)
+	}
+	if !isExactEnvironmentResource(profile.OpenPlatformBaseURL, testE2EOpenPlatformURL) ||
+		!isExactEnvironmentResource(profile.Resource, testE2EOpenPlatformURL) {
+		return productionProfileError(profile.Name)
+	}
+	for _, rawURL := range []string{profile.AppTokenEndpoint, profile.ProtectedResourceMetadataURL} {
+		if !isProductionOriginURL(rawURL, testE2EOpenPlatformOrigin, false) {
+			return productionProfileError(profile.Name)
+		}
+	}
+	for _, rawURL := range []string{
+		profile.AuthorizationServerMetadataURL,
+		profile.Identities.User.AuthorizationEndpoint,
+		profile.Identities.User.DeviceAuthorizationEndpoint,
+		profile.Identities.User.TokenEndpoint,
+		profile.Identities.User.RevocationEndpoint,
+		profile.Identities.User.RegistrationEndpoint,
+	} {
+		if !isProductionOriginURL(rawURL, testE2EAccountOrigin, false) {
+			return productionProfileError(profile.Name)
+		}
+	}
+	return nil
+}
+
 func validateProductionDeviceCredential(profileName string, stored credential.DeviceCredential) error {
 	if stored.DeviceProfile != nil {
 		profile, err := restoreDeviceProfile(profileName, stored.DeviceProfile)
@@ -67,20 +107,28 @@ func validateProductionDeviceCredential(profileName string, stored credential.De
 }
 
 func validateProductionPendingTransaction(profileName string, pending *credential.PendingTransaction) error {
+	expectedAccountOrigin := productionAccountOrigin
+	if testE2EBuild {
+		expectedAccountOrigin = testE2EAccountOrigin
+	}
 	if pending != nil &&
-		(!isProductionOriginURL(pending.TokenEndpoint, productionAccountOrigin, true) ||
-			!isProductionOriginURL(pending.VerificationURIComplete, productionAccountOrigin, false)) {
+		(!isProductionOriginURL(pending.TokenEndpoint, expectedAccountOrigin, true) ||
+			!isProductionOriginURL(pending.VerificationURIComplete, expectedAccountOrigin, false)) {
 		return productionProfileError(profileName)
 	}
 	return nil
 }
 
 func isExactProductionResource(rawURL string) bool {
+	return isExactEnvironmentResource(rawURL, productionOpenPlatformURL)
+}
+
+func isExactEnvironmentResource(rawURL string, expectedURL string) bool {
 	parsed, err := parseProductionURL(rawURL)
 	if err != nil {
 		return false
 	}
-	return parsed.Scheme+"://"+parsed.Host == productionOpenPlatformURL &&
+	return parsed.Scheme+"://"+parsed.Host == expectedURL &&
 		(parsed.EscapedPath() == "" || parsed.EscapedPath() == "/") && parsed.RawQuery == ""
 }
 
@@ -108,6 +156,12 @@ func parseProductionURL(rawURL string) (*url.URL, error) {
 }
 
 func productionProfileError(profileName string) error {
+	if testE2EBuild {
+		return fmt.Errorf(
+			"profile %q is not a Test profile and is not allowed in this Test E2E build; run `contract-cli config add --env test --name contract-test` and authorize again",
+			profileName,
+		)
+	}
 	return fmt.Errorf(
 		"profile %q belongs to a non-production environment and is not allowed in this production build; run `contract-cli config add --env prod --name contract` and authorize again",
 		profileName,
@@ -131,6 +185,14 @@ type productionGuardTransport struct {
 
 func (transport productionGuardTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	host := strings.ToLower(strings.TrimSuffix(request.URL.Hostname(), "."))
+	if testE2EBuild {
+		transport.logger.Debug("Test E2E network request", "method", request.Method, "host", host)
+		if _, allowed := allowedTestE2EHosts[host]; !allowed {
+			transport.logger.Error("Test E2E build blocked non-Test network request", "method", request.Method, "host", host)
+			return nil, fmt.Errorf("Test E2E build blocks non-Test host %q", host)
+		}
+		return transport.next.RoundTrip(request)
+	}
 	transport.logger.Debug("production network request", "method", request.Method, "host", host)
 	if _, blocked := blockedProductionBuildHosts[host]; blocked {
 		transport.logger.Error("production build blocked non-production network request", "method", request.Method, "host", host)
