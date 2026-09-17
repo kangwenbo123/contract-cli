@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 env:
   NPM_REGISTRY_URL: https://registry.npmjs.org/
@@ -17,20 +18,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           registry-url: ${{ env.NPM_REGISTRY_URL }}
+          package-manager-cache: false
 
       - name: Publish GitHub Release
         uses: goreleaser/goreleaser-action@v6
@@ -51,7 +53,7 @@ jobs:
         run: make release-assets
 
       - name: Publish npm package
+        if: ${{ github.repository == 'qfeius/contract-cli' }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TAG: ${{ contains(github.ref_name, 'beta') && 'beta' || 'latest' }}
-        run: npm publish --registry "$NPM_REGISTRY_URL" --access "$NPM_ACCESS" --tag "$NPM_TAG"
+        run: npm publish --provenance --registry "$NPM_REGISTRY_URL" --access "$NPM_ACCESS" --tag "$NPM_TAG"
