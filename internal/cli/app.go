@@ -259,7 +259,7 @@ func (a *App) runConfigAdd(ctx context.Context, args []string) error {
 	var redirectURL string
 	var scopes string
 
-	flags.StringVar(&env, "env", "prod", "environment preset")
+	flags.StringVar(&env, "env", defaultConfigEnvironment(), "environment preset")
 	flags.StringVar(&profileName, "name", defaultProfileName, "profile name")
 	flags.StringVar(&protectedResourceURL, "resource-metadata-url", "", "override protected resource metadata URL")
 	flags.StringVar(&redirectURL, "redirect-url", "", "OAuth redirect URL")

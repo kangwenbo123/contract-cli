@@ -14,6 +14,10 @@ import (
 )
 
 func TestTestE2EEnvironmentPreset(t *testing.T) {
+	if got := defaultConfigEnvironment(); got != "test" {
+		t.Fatalf("default config environment = %q, want test", got)
+	}
+
 	preset, err := resolveEnvironment("test")
 	if err != nil {
 		t.Fatal(err)
@@ -53,6 +57,32 @@ func TestTestE2EPendingAuthorizationAllowsOnlyTestAccountHost(t *testing.T) {
 	productionPending.TokenEndpoint = "https://myaccount.qfei.cn/api/public/oauth/token/contract"
 	if err := validateProductionPendingTransaction("contract-test", &productionPending); err == nil {
 		t.Fatal("Test E2E build must reject production pending authorization")
+	}
+}
+
+func TestTestE2EDeviceAuthorizationResponseAllowsOnlyTestAccountHost(t *testing.T) {
+	if err := validateDeviceAuthorizationVerificationURI(
+		"contract-test",
+		"https://test-myaccount.qtech.cn/api/public/oauth/device?user_code=redacted",
+	); err != nil {
+		t.Fatalf("valid Test verification URL rejected: %v", err)
+	}
+
+	if err := validateDeviceAuthorizationVerificationURI(
+		"contract-test",
+		"https://myaccount.qfei.cn/api/public/oauth/device?user_code=redacted",
+	); err == nil {
+		t.Fatal("Test E2E build must reject a production verification URL")
+	}
+}
+
+func TestTestE2EConfigHelpUsesTestEnvironment(t *testing.T) {
+	topic := helpRegistry()["config add"]
+	if len(topic.Flags) == 0 || topic.Flags[0].Name != "--env <test>" {
+		t.Fatalf("config add environment flag = %+v, want Test help", topic.Flags)
+	}
+	if len(topic.Examples) == 0 || topic.Examples[0] != "contract-cli config add --env test --name contract-test" {
+		t.Fatalf("config add examples = %+v, want Test example", topic.Examples)
 	}
 }
 

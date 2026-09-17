@@ -110,8 +110,8 @@ func (a *App) runAuthDeviceInit(ctx context.Context, args []string) error {
 		a.logger.Error("device authorization init failed", "profile", profile.Name, "error", err.Error())
 		return err
 	}
-	if !isProductionOriginURL(response.VerificationURIComplete, productionAccountOrigin, true) {
-		return productionProfileError(profile.Name)
+	if err := validateDeviceAuthorizationVerificationURI(profile.Name, response.VerificationURIComplete); err != nil {
+		return err
 	}
 	expiresAt := a.now().Add(time.Duration(response.ExpiresIn) * time.Second)
 	profile.DefaultIdentity = config.IdentityUser

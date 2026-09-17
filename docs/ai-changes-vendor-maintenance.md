@@ -40,3 +40,10 @@
 - 个人详情接口未返回 `ownerDepts`，但数据库已正确保存部门 ID；该现象属于存量查询响应能力，不由本次 CLI 写入造成。
 - Test 后端历史/缓存日志会记录解密后的测试账户和电话，属于现有服务日志安全债务，不在本次 CLI 代码范围内，需单独治理。
 - macOS 本机测试和多平台构建已通过；Linux、Windows 及不同架构的实机运行验收按计划留到正式发布阶段。
+
+## 2026-09-17：Test 验收包 Device 授权修复
+
+- 修复 Test E2E 构建在 Device Grant 返回后仍按生产授权域名校验 `verification_uri_complete` 的问题。Test 构建只接受 `test-myaccount.qtech.cn`，正式构建仍只接受 `myaccount.qfei.cn`，未放宽未知域名。
+- 修复 Test E2E 构建 `config add` 的默认环境仍为 `prod`、帮助文案与实际支持环境不一致的问题；Test 构建默认 `test`，正式构建默认 `prod`。
+- 新增 Test 构建回归测试，覆盖合法 Test 授权链接放行、生产授权链接拒绝、Test 默认环境及帮助文案。
+- 隔离目录实网验证 `config add` 成功，`auth init` 正常返回 `pending`；未执行 `auth complete`，未产生已授权用户 Token。

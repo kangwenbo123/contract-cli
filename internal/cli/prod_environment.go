@@ -33,6 +33,13 @@ var allowedTestE2EHosts = map[string]struct{}{
 	"test-myaccount.qtech.cn": {},
 }
 
+func defaultConfigEnvironment() string {
+	if testE2EBuild {
+		return testE2EEnvironment
+	}
+	return productionEnvironment
+}
+
 func validateProductionProfile(profile config.Profile) error {
 	if testE2EBuild {
 		return validateTestE2EProfile(profile)
@@ -107,16 +114,27 @@ func validateProductionDeviceCredential(profileName string, stored credential.De
 }
 
 func validateProductionPendingTransaction(profileName string, pending *credential.PendingTransaction) error {
-	expectedAccountOrigin := productionAccountOrigin
-	if testE2EBuild {
-		expectedAccountOrigin = testE2EAccountOrigin
-	}
+	expectedAccountOrigin := requiredAccountOrigin()
 	if pending != nil &&
 		(!isProductionOriginURL(pending.TokenEndpoint, expectedAccountOrigin, true) ||
 			!isProductionOriginURL(pending.VerificationURIComplete, expectedAccountOrigin, false)) {
 		return productionProfileError(profileName)
 	}
 	return nil
+}
+
+func validateDeviceAuthorizationVerificationURI(profileName, rawURL string) error {
+	if !isProductionOriginURL(rawURL, requiredAccountOrigin(), true) {
+		return productionProfileError(profileName)
+	}
+	return nil
+}
+
+func requiredAccountOrigin() string {
+	if testE2EBuild {
+		return testE2EAccountOrigin
+	}
+	return productionAccountOrigin
 }
 
 func isExactProductionResource(rawURL string) bool {
