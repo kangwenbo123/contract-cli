@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +21,7 @@ import (
 
 type deviceAuthOutput struct {
 	Status                  string `json:"status"`
+	CredentialScope         string `json:"credential_scope,omitempty"`
 	VerificationURIComplete string `json:"verification_uri_complete,omitempty"`
 	QRCodePath              string `json:"qr_code_path,omitempty"`
 	QRCodeDataURI           string `json:"qr_code_data_uri,omitempty"`
@@ -75,7 +75,7 @@ func (a *App) runAuthDeviceInit(ctx context.Context, args []string) error {
 		return err
 	}
 	if !acquired {
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "busy"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "busy"})
 	}
 	defer release()
 
@@ -85,6 +85,11 @@ func (a *App) runAuthDeviceInit(ctx context.Context, args []string) error {
 	}
 	if restart && (errors.Is(loadErr, credential.ErrCredentialNotFound) || existing.Pending == nil) {
 		return errors.New("no device authorization to restart; run `contract-cli auth init --output json` without --restart")
+	}
+	if !restart && existing.Pending == nil {
+		if reused, err := a.reuseDeviceAuthorization(ctx, profile, store, existing); reused || err != nil {
+			return err
+		}
 	}
 	if !restart && existing.Pending != nil {
 		return a.writeExistingDeviceAuthorization(profile.Name, store, existing)
@@ -134,7 +139,7 @@ func (a *App) runAuthDeviceInit(ctx context.Context, args []string) error {
 		return err
 	}
 	a.logger.Info("device authorization init completed", "profile", profile.Name, "expires_at", expiresAt.Format(time.RFC3339))
-	return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{
+	return a.writeDeviceAuthOutput(deviceAuthOutput{
 		Status: "pending", VerificationURIComplete: response.VerificationURIComplete,
 		QRCodePath: qrCode.Path, QRCodeDataURI: qrCode.DataURI, ExpiresAt: expiresAt.Format(time.RFC3339),
 		ExpiresAtDisplay: formatDeviceAuthorizationExpiry(expiresAt),
@@ -169,7 +174,7 @@ func (a *App) runAuthDeviceComplete(ctx context.Context, args []string) error {
 		return err
 	}
 	if !acquired {
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "busy"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "busy"})
 	}
 	defer release()
 
@@ -186,15 +191,15 @@ func (a *App) runAuthDeviceComplete(ctx context.Context, args []string) error {
 		if err := store.Save(profile.Name, stored); err != nil {
 			return fmt.Errorf("mark interrupted device authorization as uncertain: %w", err)
 		}
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "uncertain"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "uncertain"})
 	case credential.PendingStatusUncertain:
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "uncertain"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "uncertain"})
 	case credential.PendingStatusDenied:
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "denied"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "denied"})
 	case credential.PendingStatusExpired:
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "expired"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "expired"})
 	case credential.PendingStatusInvalidGrant:
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "restart_required"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "restart_required"})
 	case credential.PendingStatusPending:
 		// Only a known pending state may reach the Token Endpoint.
 	default:
@@ -205,7 +210,7 @@ func (a *App) runAuthDeviceComplete(ctx context.Context, args []string) error {
 		if err := store.Save(profile.Name, stored); err != nil {
 			return err
 		}
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "expired"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "expired"})
 	}
 
 	stored.Pending.Status = credential.PendingStatusChecking
@@ -223,38 +228,38 @@ func (a *App) runAuthDeviceComplete(ctx context.Context, args []string) error {
 			if saveErr := store.Save(profile.Name, stored); saveErr != nil {
 				return fmt.Errorf("restore pending device authorization: %w", saveErr)
 			}
-			return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "pending"})
+			return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "pending"})
 		case oauth.IsDeviceGrantError(err, "slow_down"):
 			stored.Pending.Status = credential.PendingStatusPending
 			if saveErr := store.Save(profile.Name, stored); saveErr != nil {
 				return fmt.Errorf("restore slowed down device authorization: %w", saveErr)
 			}
-			return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "pending"})
+			return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "pending"})
 		case oauth.IsDeviceGrantError(err, "access_denied"):
 			stored.Pending.Status = credential.PendingStatusDenied
 			if saveErr := store.Save(profile.Name, stored); saveErr != nil {
 				return fmt.Errorf("save denied device authorization: %w", saveErr)
 			}
-			return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "denied"})
+			return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "denied"})
 		case oauth.IsDeviceGrantError(err, "expired_token"):
 			stored.Pending.Status = credential.PendingStatusExpired
 			if saveErr := store.Save(profile.Name, stored); saveErr != nil {
 				return fmt.Errorf("save expired device authorization: %w", saveErr)
 			}
-			return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "expired"})
+			return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "expired"})
 		case oauth.IsDeviceGrantError(err, "invalid_grant"):
 			stored.Pending.Status = credential.PendingStatusInvalidGrant
 			if saveErr := store.Save(profile.Name, stored); saveErr != nil {
 				return fmt.Errorf("save rejected device authorization: %w", saveErr)
 			}
-			return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "restart_required"})
+			return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "restart_required"})
 		default:
 			a.logger.Error("device authorization complete check failed", "profile", profile.Name, "error", err.Error())
 			stored.Pending.Status = credential.PendingStatusUncertain
 			if saveErr := store.Save(profile.Name, stored); saveErr != nil {
 				return fmt.Errorf("save uncertain device authorization after failed Token Endpoint request: %w", saveErr)
 			}
-			return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "uncertain"})
+			return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "uncertain"})
 		}
 	}
 	stored.Pending = nil
@@ -268,7 +273,7 @@ func (a *App) runAuthDeviceComplete(ctx context.Context, args []string) error {
 		)
 	}
 	a.logger.Info("device authorization complete succeeded", "profile", profile.Name, "expires_at", token.Expiry.Format(time.RFC3339))
-	return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{
+	return a.writeDeviceAuthOutput(deviceAuthOutput{
 		Status: "succeeded", ExpiresAt: token.Expiry.Format(time.RFC3339),
 		ExpiresAtDisplay: formatDeviceAuthorizationExpiry(token.Expiry),
 	})
@@ -286,28 +291,28 @@ func (a *App) writeExistingDeviceAuthorization(profileName string, store credent
 			if err := store.Save(profileName, existing); err != nil {
 				return fmt.Errorf("save expired device authorization: %w", err)
 			}
-			return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "expired"})
+			return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "expired"})
 		}
 		if strings.TrimSpace(pending.VerificationURIComplete) == "" {
-			return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "restart_required"})
+			return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "restart_required"})
 		}
 		qrCode, err := a.writeAuthorizationQRCode(profileName, pending.VerificationURIComplete)
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{
+		return a.writeDeviceAuthOutput(deviceAuthOutput{
 			Status: "pending", VerificationURIComplete: pending.VerificationURIComplete,
 			QRCodePath: qrCode.Path, QRCodeDataURI: qrCode.DataURI, ExpiresAt: pending.ExpiresAt.Format(time.RFC3339),
 			ExpiresAtDisplay: formatDeviceAuthorizationExpiry(pending.ExpiresAt),
 		})
 	case credential.PendingStatusChecking, credential.PendingStatusUncertain:
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "uncertain"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "uncertain"})
 	case credential.PendingStatusDenied:
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "denied"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "denied"})
 	case credential.PendingStatusExpired:
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "expired"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "expired"})
 	case credential.PendingStatusInvalidGrant:
-		return json.NewEncoder(a.stdout).Encode(deviceAuthOutput{Status: "restart_required"})
+		return a.writeDeviceAuthOutput(deviceAuthOutput{Status: "restart_required"})
 	default:
 		return fmt.Errorf("unsupported pending device authorization status %q", pending.Status)
 	}
@@ -341,16 +346,19 @@ func (a *App) deviceCredentials() (credential.Store, error) {
 	if a.credentialStore != nil {
 		return a.credentialStore, nil
 	}
-	store, err := credential.NewStore(credential.Options{LookupEnv: a.lookupEnv})
+	runtimeContext, err := a.resolveDeviceRuntime()
 	if err != nil {
 		return nil, err
 	}
-	a.credentialStore = store
+	store, err := credential.NewStore(credential.Options{LookupEnv: a.lookupEnv, Keyring: a.credentialKeyring, Runtime: &runtimeContext})
+	if err != nil {
+		return nil, err
+	}
 	return store, nil
 }
 
 func (a *App) writeAuthorizationQRCode(profileName, verificationURI string) (authorizationQRCode, error) {
-	runtimeContext, err := credential.ResolveDeviceRuntime(a.lookupEnv)
+	runtimeContext, err := a.resolveDeviceRuntime()
 	if err != nil {
 		return authorizationQRCode{}, err
 	}
@@ -364,7 +372,7 @@ func (a *App) writeAuthorizationQRCode(profileName, verificationURI string) (aut
 		baseDir = runtimeContext.Workspace
 		artifactNamespace = runtimeContext.SessionNamespace + "\x00" + profileName
 		filePrefix = "contract-cli-device-auth-"
-	case credential.DeviceRuntimeWorkBuddy:
+	case credential.DeviceRuntimeWorkBuddy, credential.DeviceRuntimeLocalUser:
 		cacheDir, err := os.UserCacheDir()
 		if err != nil {
 			return authorizationQRCode{}, fmt.Errorf("resolve qr cache directory: %w", err)

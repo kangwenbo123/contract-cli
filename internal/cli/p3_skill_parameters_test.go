@@ -72,7 +72,7 @@ func TestP3CommandsHaveDedicatedParameterReferences(t *testing.T) {
 
 func p3ParameterReferences() []p3ParameterReference {
 	return []p3ParameterReference{
-		{"contract-cli-contract", "search-v2-parameters.md", "contract-cli contract search-v2", "POST /open-apis/contract/v1/contracts/searchV2", true},
+		{"contract-cli-contract-search", "search-v2-parameters.md", "contract-cli contract search-v2", "POST /open-apis/contract/v1/contracts/searchV2", true},
 		{"contract-cli-contract", "field-update-parameters.md", "contract-cli contract field update", "PUT /open-apis/contract/v1/attribute_definition", true},
 		{"contract-cli-contract", "sign-switch-to-paper-parameters.md", "contract-cli contract sign switch-to-paper", "POST /open-apis/contract/v1/contracts/signType/switchToPaper", false},
 		{"contract-cli-contract", "sign-url-get-parameters.md", "contract-cli contract sign-url get", "GET /open-apis/contract/v1/contracts/{contract_id}/sign_url", false},

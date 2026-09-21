@@ -45,12 +45,12 @@ func TestDeviceAuthSkillsEnforceWorkBuddyTurnBoundaries(t *testing.T) {
 		"根据真实状态选择复用现有会话、普通 `auth init` 或带 `--restart` 的 `auth init`",
 		"auth status` 不支持 `--output",
 		"豆包 AgentKit / Skills Sandbox 运行在云端 Skill 环境",
-		"豆包普通工作任务使用 `SESSION_ID`",
+		"豆包普通工作任务在隔离范围内使用 `SESSION_ID`",
 		"必须从任务初始工作目录执行",
 		"不能抵御同一沙箱内具有文件和进程访问能力的 Shell",
 		"macOS Keychain",
 		"必须提供 `SKILL_SESSION_WORKSPACE`",
-		"WorkBuddy 运行在客户本机",
+		"CLI 确认当前进程来自本地桌面客户端",
 		"一次授权同时包含合同与智审平台访问范围",
 	} {
 		if !strings.Contains(auth, required) {
@@ -128,6 +128,49 @@ func TestDeviceAuthSkillsEnforceWorkBuddyTurnBoundaries(t *testing.T) {
 	} {
 		if !strings.Contains(auth, required) {
 			t.Fatalf("auth skill missing required init failure boundary %q", required)
+		}
+	}
+}
+
+func TestDeviceAuthSkillsDistinguishReusableCredentialsFromPendingAuthorization(t *testing.T) {
+	root := filepath.Join("..", "..")
+	for _, path := range []string{
+		filepath.Join(root, "skills", "auth", "SKILL.md"),
+		filepath.Join(root, "skills", "contract-cli-shared", "SKILL.md"),
+		filepath.Join(root, "skills", "contract-cli-contract", "SKILL.md"),
+		filepath.Join(root, "README.md"),
+	} {
+		content := readDeviceAuthSkillFile(t, path)
+		for _, required := range []string{
+			"auth status --profile contract --as user",
+			"status=authorized",
+			"status=pending",
+		} {
+			if !strings.Contains(content, required) {
+				t.Errorf("%s missing reusable authorization boundary %q", path, required)
+			}
+		}
+	}
+	auth := readDeviceAuthSkillFile(t, filepath.Join(root, "skills", "auth", "SKILL.md"))
+	for _, required := range []string{
+		"当前系统用户 + profile",
+		"跨任务复用",
+		"不能仅凭 `SESSION_ID` 或操作系统类型判断为本地",
+		"云端、沙箱或识别不明确",
+		"不自动迁移旧任务凭证",
+		"同一 profile 的所有本地任务",
+		"不得展示不存在的授权链接或二维码",
+	} {
+		if !strings.Contains(auth, required) {
+			t.Errorf("auth skill missing credential scope boundary %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"只在同一任务内复用，新建任务必须重新授权",
+		"WorkBuddy 运行在客户本机，必须提供 `CODEBUDDY_SESSION_ID`",
+	} {
+		if strings.Contains(auth, forbidden) {
+			t.Errorf("auth skill still requires task isolation for all desktop sessions: %q", forbidden)
 		}
 	}
 }

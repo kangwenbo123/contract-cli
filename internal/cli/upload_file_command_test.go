@@ -310,7 +310,7 @@ func assertUploadMultipart(t *testing.T, req *http.Request, wantFileName, wantFi
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	defer uploaded.Close()
+	defer func() { _ = uploaded.Close() }()
 	content, err := io.ReadAll(uploaded)
 	if err != nil {
 		t.Fatalf("ReadAll() error = %v", err)

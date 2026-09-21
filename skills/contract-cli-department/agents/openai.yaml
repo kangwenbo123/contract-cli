@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI 部门查询"
+  short_description: "按名称或部门 ID 查询候选、层级与状态，衔接人员查询和合同筛选"
+  default_prompt: "使用 $contract-cli-department 查询部门候选，确认层级与身份后原样使用 department_id。"
+
+policy:
+  allow_implicit_invocation: true

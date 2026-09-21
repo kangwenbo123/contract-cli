@@ -36,11 +36,11 @@ contract-cli contract search-v2 --profile contract --as app --input-file search-
 
 | 接口 | 列表与分页 | 额外字段/行为 |
 | --- | --- | --- |
-| user MCP `contract search --as user` | `data.items[]`、`has_more`、`page_token`、`pagination` | ID 展示字段按 MCP schema 返回 string；包含状态展示策略字段。 |
+| user MCP `contract search --as user` | `data.items[]`、`has_more`、`page_token`；`pagination` 为可选扩展 | 当前生产默认响应未必提供状态展示策略字段；ID 可能是 string 或 number，保留原值并避免大整数精度损失。 |
 | app V1 `contract search --as app` | `data.items[]`、`has_more`、`page_token` | 顶层编号精确查询最多一条，固定不翻页；未命中返回 `110107`。 |
 | app V2 `contract search-v2 --as app` | `data.items[]`、`has_more`、`page_token` | 顶层编号可返回多条；未命中成功返回空列表。 |
 
-user MCP 的 `data.pagination`：
+user MCP 扩展响应的 `data.pagination`：下表必填性仅针对提供该扩展的契约，当前生产默认响应可能完全不返回此对象，不得据此判定查询失败或推算总数。
 
 | 字段 | 类型 | 必填性 | 含义 |
 | --- | --- | --- | --- |
@@ -51,7 +51,7 @@ user MCP 的 `data.pagination`：
 | `returned_items` | integer | 必填 | 本页返回合同条目数。 |
 | `total_units` | integer | 必填 | 命中合同分组总数。 |
 
-user MCP 列表项额外状态字段：
+user MCP 列表项可选扩展状态字段（当前生产默认样例未提供）：
 
 | 字段 | 类型 | 含义 |
 | --- | --- | --- |

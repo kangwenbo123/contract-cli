@@ -27,6 +27,7 @@ const (
 	envWorkBuddySessionID    = "CODEBUDDY_SESSION_ID"
 	envDoubaoWorkTaskSession = "SESSION_ID"
 	keyringService           = "cn.qfei.contract-cli"
+	localUserKeyringService  = "cn.qfei.contract-cli.local-user-v1"
 	doubaoWorkTaskKeyPurpose = "cn.qfei.contract-cli/doubao-work-task/credential-key/v1\x00"
 	doubaoWorkTaskNSPurpose  = "cn.qfei.contract-cli/doubao-work-task/session-namespace/v1\x00"
 )
@@ -98,6 +99,7 @@ type Keyring interface {
 type Options struct {
 	LookupEnv func(string) (string, bool)
 	Keyring   Keyring
+	Runtime   *DeviceRuntime
 }
 
 type DeviceRuntimeKind string
@@ -106,6 +108,7 @@ const (
 	DeviceRuntimeDoubaoCloud    DeviceRuntimeKind = "doubao_cloud"
 	DeviceRuntimeWorkBuddy      DeviceRuntimeKind = "workbuddy"
 	DeviceRuntimeDoubaoWorkTask DeviceRuntimeKind = "doubao_work_task"
+	DeviceRuntimeLocalUser      DeviceRuntimeKind = "local_user"
 )
 
 type DeviceRuntime struct {
@@ -141,14 +144,14 @@ func resolveDeviceRuntime(lookupEnv func(string) (string, bool), currentDir func
 		}
 		workspace = strings.TrimSpace(workspace)
 		if !filepath.IsAbs(workspace) {
-			return DeviceRuntime{}, fmt.Errorf("Doubao work task directory must be absolute: %q", workspace)
+			return DeviceRuntime{}, fmt.Errorf("doubao work task directory must be absolute: %q", workspace)
 		}
 		info, err := os.Stat(workspace)
 		if err != nil {
 			return DeviceRuntime{}, fmt.Errorf("inspect Doubao work task directory: %w", err)
 		}
 		if !info.IsDir() {
-			return DeviceRuntime{}, fmt.Errorf("Doubao work task directory is not a directory: %q", workspace)
+			return DeviceRuntime{}, fmt.Errorf("doubao work task directory is not a directory: %q", workspace)
 		}
 		namespace := deviceSessionNamespace(doubaoSessionID)
 		return DeviceRuntime{
@@ -173,44 +176,66 @@ func NewStore(options Options) (Store, error) {
 	if lookupEnv == nil {
 		lookupEnv = os.LookupEnv
 	}
-	runtimeContext, err := ResolveDeviceRuntime(lookupEnv)
+	runtimeContext, err := runtimeForStore(options.Runtime, lookupEnv)
 	if err != nil {
 		return nil, err
 	}
-	if runtimeContext.Kind == DeviceRuntimeDoubaoCloud {
-		encodedKey, keyExists := lookupEnv(envCredentialKey)
-		if !keyExists || strings.TrimSpace(encodedKey) == "" {
-			return nil, fmt.Errorf("%s is required in the Doubao Skill environment", envCredentialKey)
-		}
-		key, err := base64.StdEncoding.DecodeString(encodedKey)
-		if err != nil || len(key) != 32 {
-			return nil, fmt.Errorf("%s must be a base64-encoded 32-byte key", envCredentialKey)
-		}
-		return &encryptedFileStore{
-			dir: filepath.Join(runtimeContext.Workspace, ".contract-cli", "credentials"),
-			key: key,
-		}, nil
+	switch runtimeContext.Kind {
+	case DeviceRuntimeDoubaoCloud:
+		return newCloudStore(runtimeContext, lookupEnv)
+	case DeviceRuntimeDoubaoWorkTask:
+		return newTaskStore(runtimeContext)
+	case DeviceRuntimeWorkBuddy, DeviceRuntimeLocalUser:
+		return newKeyringStore(runtimeContext, options.Keyring)
 	}
-	if runtimeContext.Kind == DeviceRuntimeDoubaoWorkTask {
-		dir := filepath.Join(runtimeContext.DataDir, "credentials")
-		if err := ensureWritableCredentialDirectory(dir); err != nil {
-			return nil, err
-		}
-		return &encryptedFileStore{
-			dir: dir,
-			key: deriveDoubaoWorkTaskCredentialKey(runtimeContext.SessionID),
-		}, nil
-	}
+	return nil, fmt.Errorf("unsupported Device credential runtime: %q", runtimeContext.Kind)
+}
 
+func runtimeForStore(resolved *DeviceRuntime, lookupEnv func(string) (string, bool)) (DeviceRuntime, error) {
+	if resolved != nil {
+		return *resolved, nil
+	}
+	return ResolveDeviceRuntime(lookupEnv)
+}
+
+func newCloudStore(runtimeContext DeviceRuntime, lookupEnv func(string) (string, bool)) (Store, error) {
+	encodedKey, keyExists := lookupEnv(envCredentialKey)
+	if !keyExists || strings.TrimSpace(encodedKey) == "" {
+		return nil, fmt.Errorf("%s is required in the Doubao Skill environment", envCredentialKey)
+	}
+	key, err := base64.StdEncoding.DecodeString(encodedKey)
+	if err != nil || len(key) != 32 {
+		return nil, fmt.Errorf("%s must be a base64-encoded 32-byte key", envCredentialKey)
+	}
+	return &encryptedFileStore{
+		dir: filepath.Join(runtimeContext.Workspace, ".contract-cli", "credentials"),
+		key: key,
+	}, nil
+}
+
+func newTaskStore(runtimeContext DeviceRuntime) (Store, error) {
+	dir := filepath.Join(runtimeContext.DataDir, "credentials")
+	if err := ensureWritableCredentialDirectory(dir); err != nil {
+		return nil, err
+	}
+	return &encryptedFileStore{
+		dir: dir,
+		key: deriveDoubaoWorkTaskCredentialKey(runtimeContext.SessionID),
+	}, nil
+}
+
+func newKeyringStore(runtimeContext DeviceRuntime, backend Keyring) (Store, error) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" && runtime.GOOS != "linux" {
 		return nil, fmt.Errorf("local agent credential store is not supported on %s", runtime.GOOS)
 	}
-	backend := options.Keyring
 	if backend == nil {
 		backend = systemKeyring{}
 	}
+	if runtimeContext.Kind == DeviceRuntimeLocalUser {
+		return &localKeyringStore{agentName: "local user", service: localUserKeyringService, keyring: backend}, nil
+	}
 	return &localKeyringStore{
-		agentName: "WorkBuddy", sessionID: runtimeContext.SessionID, keyring: backend,
+		agentName: "WorkBuddy", service: keyringService, accountPrefix: runtimeContext.SessionID + ":", keyring: backend,
 	}, nil
 }
 
@@ -238,7 +263,7 @@ func (s *encryptedFileStore) Load(profileName string) (DeviceCredential, error) 
 	return credential, nil
 }
 
-func (s *encryptedFileStore) Save(profileName string, credential DeviceCredential) error {
+func (s *encryptedFileStore) Save(profileName string, credential DeviceCredential) (saveErr error) {
 	plaintext, err := json.Marshal(credential)
 	if err != nil {
 		return fmt.Errorf("encode credential: %w", err)
@@ -255,7 +280,11 @@ func (s *encryptedFileStore) Save(profileName string, credential DeviceCredentia
 		return fmt.Errorf("create credential temporary file: %w", err)
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() {
+		if err := os.Remove(temporaryPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			saveErr = errors.Join(saveErr, fmt.Errorf("remove credential temporary file: %w", err))
+		}
+	}()
 	if err := temporary.Chmod(0o600); err != nil {
 		_ = temporary.Close()
 		return fmt.Errorf("set credential file permissions: %w", err)
@@ -290,13 +319,14 @@ func (s *encryptedFileStore) path(profileName string) string {
 }
 
 type localKeyringStore struct {
-	agentName string
-	sessionID string
-	keyring   Keyring
+	agentName     string
+	service       string
+	accountPrefix string
+	keyring       Keyring
 }
 
 func (s *localKeyringStore) Load(profileName string) (DeviceCredential, error) {
-	value, err := s.keyring.Get(keyringService, s.user(profileName))
+	value, err := s.keyring.Get(s.service, s.user(profileName))
 	if err != nil {
 		if errors.Is(err, ErrCredentialNotFound) || errors.Is(err, keyringlib.ErrNotFound) {
 			return DeviceCredential{}, ErrCredentialNotFound
@@ -315,14 +345,14 @@ func (s *localKeyringStore) Save(profileName string, credential DeviceCredential
 	if err != nil {
 		return fmt.Errorf("encode %s credential: %w", s.agentName, err)
 	}
-	if err := s.keyring.Set(keyringService, s.user(profileName), string(data)); err != nil {
+	if err := s.keyring.Set(s.service, s.user(profileName), string(data)); err != nil {
 		return fmt.Errorf("write %s credential to %s secure storage: %w", s.agentName, runtime.GOOS, err)
 	}
 	return nil
 }
 
 func (s *localKeyringStore) Delete(profileName string) error {
-	err := s.keyring.Delete(keyringService, s.user(profileName))
+	err := s.keyring.Delete(s.service, s.user(profileName))
 	if errors.Is(err, keyringlib.ErrNotFound) || errors.Is(err, ErrCredentialNotFound) {
 		return nil
 	}
@@ -330,7 +360,7 @@ func (s *localKeyringStore) Delete(profileName string) error {
 }
 
 func (s *localKeyringStore) user(profileName string) string {
-	return s.sessionID + ":" + profileName
+	return s.accountPrefix + profileName
 }
 
 type systemKeyring struct{}

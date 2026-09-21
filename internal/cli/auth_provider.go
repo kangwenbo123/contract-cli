@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -151,9 +150,9 @@ func (p userAuthProvider) Login(ctx context.Context, profile *config.Profile, op
 	p.logger.Info("user auth login completed", "profile", profile.Name)
 
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("Authorization succeeded for profile %q.", profile.Name))
+	_, _ = fmt.Fprintf(&builder, "Authorization succeeded for profile %q.", profile.Name)
 	if !token.Expiry.IsZero() {
-		builder.WriteString(fmt.Sprintf("\nAccess token expires at: %s", token.Expiry.Format(time.RFC3339)))
+		_, _ = fmt.Fprintf(&builder, "\nAccess token expires at: %s", token.Expiry.Format(time.RFC3339))
 	}
 	return builder.String(), nil
 }
@@ -247,9 +246,9 @@ func (p appAuthProvider) Login(ctx context.Context, profile *config.Profile, opt
 	p.logger.Info("app auth login completed", "profile", profile.Name, "token_endpoint", profile.AppTokenEndpoint, "expires_at", token.Expiry.Format(time.RFC3339))
 
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("App authorization succeeded for profile %q.", profile.Name))
+	_, _ = fmt.Fprintf(&builder, "App authorization succeeded for profile %q.", profile.Name)
 	if !token.Expiry.IsZero() {
-		builder.WriteString(fmt.Sprintf("\nAccess token expires at: %s", token.Expiry.Format(time.RFC3339)))
+		_, _ = fmt.Fprintf(&builder, "\nAccess token expires at: %s", token.Expiry.Format(time.RFC3339))
 	}
 	return builder.String(), nil
 }
@@ -369,10 +368,6 @@ func combineCredentialSources(appIDSource, appSecretSource string) string {
 	default:
 		return "mixed"
 	}
-}
-
-func defaultLookupEnv(key string) (string, bool) {
-	return os.LookupEnv(key)
 }
 
 func lookupEnvAny(lookup func(string) (string, bool), keys ...string) (string, bool) {

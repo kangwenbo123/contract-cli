@@ -77,6 +77,24 @@ func cloneURLValues(values url.Values) url.Values {
 
 var contractMCPToolSpecs = []ToolSpec{
 	{
+		ToolName: "get-employees", Method: http.MethodGet,
+		Path:           "/open-apis/contract/v1/mcp/employees",
+		FixedQuery:     url.Values{"user_id_type": {"user_id"}},
+		IdentityPolicy: IdentityPolicyUserOnly, OperationKind: OperationRead,
+	},
+	{
+		ToolName: "get-departments", Method: http.MethodGet,
+		Path:           "/open-apis/contract/v1/mcp/departments",
+		IdentityPolicy: IdentityPolicyUserOnly, OperationKind: OperationRead,
+	},
+	{
+		ToolName:       "list-contract-search-filter-fields",
+		Method:         http.MethodGet,
+		Path:           "/open-apis/contract/v1/mcp/contracts/search/filter_fields",
+		IdentityPolicy: IdentityPolicyUserOnly,
+		OperationKind:  OperationRead,
+	},
+	{
 		ToolName:       "search-contracts",
 		Method:         http.MethodPost,
 		Path:           "/open-apis/contract/v1/mcp/contracts/search",

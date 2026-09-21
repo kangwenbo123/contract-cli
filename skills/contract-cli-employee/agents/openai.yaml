@@ -1,0 +1,7 @@
+interface:
+  display_name: "Contract CLI 人员查询"
+  short_description: "按姓名或部门查询人员候选，取得用户 ID 与状态并衔接合同筛选"
+  default_prompt: "使用 $contract-cli-employee 查询人员候选，结合姓名、部门与状态确认目标，并保留返回的 user_id。"
+
+policy:
+  allow_implicit_invocation: true

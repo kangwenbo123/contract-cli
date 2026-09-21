@@ -202,6 +202,8 @@ func helpRegistry() map[string]helpTopic {
 		{"contract-cli update check [flags]", "检查 npm 远端版本"},
 		{"contract-cli environment inspect [flags]", "探测当前 CLI 的宿主客户端环境"},
 		{"contract-cli contract <subcommand> [flags]", "合同结构化命令"},
+		{"contract-cli employee list [flags]", "按姓名或部门查询人员"},
+		{"contract-cli department list [flags]", "查询部门候选与部门 ID"},
 		{"contract-cli payment <subcommand> [flags]", "付款结构化命令"},
 		{"contract-cli mdm vendor <subcommand> [flags]", "交易方主数据命令"},
 		{"contract-cli mdm legal <subcommand> [flags]", "法人主体主数据命令"},
@@ -244,6 +246,7 @@ func helpRegistry() map[string]helpTopic {
 	addUpdateHelp(registry)
 	addEnvironmentHelp(registry)
 	addContractHelp(registry)
+	addDirectoryHelp(registry)
 	addPaymentHelp(registry)
 	addMDMHelp(registry)
 	addEventHelp(registry)
@@ -475,38 +478,13 @@ func addUpdateHelp(registry map[string]helpTopic) {
 	}
 }
 
-func addAPIHelp(registry map[string]helpTopic) {
-	registry["api"] = helpTopic{
-		Name:  "api",
-		Usage: []string{"contract-cli api <subcommand> [flags]"},
-		Commands: []helpCommand{
-			{"contract-cli api call <METHOD> <PATH> [flags]", "原始开放平台接口调用"},
-		},
-	}
-	registry["api call"] = helpTopic{
-		Name:    "api call",
-		Summary: "对开放平台任意相对路径发起原始调用。",
-		Usage:   []string{"contract-cli api call <METHOD> <PATH> [flags]"},
-		Flags: concatHelpFlags(openPlatformCommonFlags(), jsonBodyFlags(), []helpFlag{
-			{"--header \"Key: Value\"", "追加 HTTP header，可重复传入"},
-		}),
-		Examples: []string{
-			"contract-cli api call GET /open-apis/contract/v1/mcp/config/config_list --profile contract --as user",
-			"contract-cli api call POST /open-apis/mdm/v1/vendors --profile contract --as app --data '{\"foo\":\"bar\"}'",
-		},
-		Notes: []string{
-			"PATH 必须是相对路径，且以 /open-apis/ 开头。",
-			"/open-apis/contract/v1/mcp/... 会被视为 user-only，显式 --as app 会报错。",
-		},
-	}
-}
-
 func addContractHelp(registry map[string]helpTopic) {
 	registry["contract"] = helpTopic{
 		Name:  "contract",
 		Usage: []string{"contract-cli contract <subcommand> [flags]"},
 		Commands: []helpCommand{
 			{"contract-cli contract search [flags]", "搜索合同"},
+			{"contract-cli contract search-fields [flags]", "按展示名查询合同搜索字段元数据"},
 			{"contract-cli contract search-v2 [flags]", "app 身份搜索合同 V2"},
 			{"contract-cli contract get <contract-id> [flags]", "获取合同详情"},
 			{"contract-cli contract sync-user-groups [flags]", "同步用户分组"},
@@ -537,7 +515,7 @@ func addContractHelp(registry map[string]helpTopic) {
 		Name:    "contract search",
 		Summary: "搜索合同，按当前身份自动路由 user MCP 或 app 开放平台接口。",
 		Usage:   []string{"contract-cli contract search [flags]"},
-		Flags: concatHelpFlags(openPlatformCommonFlags(), jsonBodyFlags(), pageFlags(), []helpFlag{
+		Flags: concatHelpFlags(contractSearchCommonFlags(), jsonBodyFlags(), pageFlags(), []helpFlag{
 			{"--contract-number <number>", "按合同编号搜索，会合并进 JSON 请求体"},
 		}),
 		Examples: []string{
@@ -547,7 +525,28 @@ func addContractHelp(registry map[string]helpTopic) {
 		Notes: []string{
 			"user: /open-apis/contract/v1/mcp/contracts/search",
 			"app: /open-apis/contract/v1/contracts/search",
+			"user 固定 user_id；显式指定其他 --user-id-type 会在发送搜索请求前报错。app 保留类型透传。",
+			"查询自定义字段前，先用 contract search-fields --keyword <字段展示名> 获取元数据，再按返回的位置、真实 key 和值类型构造条件。",
 			"--input-file / --data 可选；查询 flag 会合并进 JSON body。",
+			"user 搜索保留完整响应；业务 code 非零或 success=false 时输出响应并返回错误。",
+		},
+	}
+	registry["contract search-fields"] = helpTopic{
+		Name:    "contract search-fields",
+		Summary: "查询合同搜索字段元数据，对应 MCP list-contract-search-filter-fields。",
+		Usage:   []string{"contract-cli contract search-fields [--keyword <field-name>] [flags]"},
+		Flags: concatHelpFlags(userMCPCommonFlags(), []helpFlag{
+			{"--keyword <field-name>", "按字段展示名做字面量模糊搜索；已知字段名称时优先传入"},
+		}),
+		Examples: []string{
+			"contract-cli contract search-fields --profile contract --as user --keyword 项目区域 --output json",
+		},
+		Notes: []string{
+			"GET /open-apis/contract/v1/mcp/contracts/search/filter_fields；接口固定返回中文说明。",
+			"仅用户明确要求完整字段清单时省略 keyword；不传时返回全部可用字段。",
+			"按 request_location / request_paths 放置搜索条件，保留 search_field、filter_unique_key 和值类型。",
+			"字段发现是 contract search 的前置步骤；替换示例中的真实筛选值并保留其他查询条件，再执行搜索。",
+			"保留完整响应；业务 code 非零或 success=false 时输出响应并返回错误。",
 		},
 	}
 	registry["contract search-v2"] = helpTopic{
@@ -1855,6 +1854,16 @@ func tableIDHelpFlags() []helpFlag {
 	return []helpFlag{
 		{"--table-id <id>", "必填，规则表 ID"},
 	}
+}
+
+func contractSearchCommonFlags() []helpFlag {
+	flags := openPlatformCommonFlags()
+	for i, flag := range flags {
+		if flag.Name == "--user-id-type <type>" {
+			flags[i].Description = "user 固定 user_id，不接受其他类型；app 透传指定类型，默认 user_id"
+		}
+	}
+	return flags
 }
 
 func openPlatformCommonFlags() []helpFlag {

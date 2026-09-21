@@ -142,7 +142,7 @@ func getJSON[T any](ctx context.Context, client *http.Client, endpoint string) (
 	if err != nil {
 		return zero, fmt.Errorf("perform GET request for %s: %w", endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Transport/status/decode errors determine the request result.
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))

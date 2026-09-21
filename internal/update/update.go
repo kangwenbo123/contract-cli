@@ -116,7 +116,7 @@ func Check(ctx context.Context, options Options) (Result, error) {
 		}
 		return Result{}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Read/status errors determine the update-check result.
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {

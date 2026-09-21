@@ -250,9 +250,10 @@ func TestSharedSkillRoutesAllCurrentContractCapabilities(t *testing.T) {
 	t.Parallel()
 
 	content := readTextFile(t, filepath.Join("..", "..", "skills", "contract-cli-shared", "SKILL.md"))
-	required := "合同搜索、详情、创建、合同文本、模板、分类、枚举、字段更新、签署链接、合同授权、电子签、分享、协商、审批：读"
-	if !strings.Contains(content, required) {
-		t.Fatalf("shared skill missing broad contract routing fragment %q", required)
+	for _, destination := range []string{"contract-cli-contract-search", "contract-cli-contract"} {
+		if !strings.Contains(content, "](../"+destination+"/SKILL.md)") {
+			t.Errorf("shared skill must route to %s", destination)
+		}
 	}
 }
 

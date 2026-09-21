@@ -131,7 +131,7 @@ func (a *App) downloadSignedContractFileToPath(ctx context.Context, rawURL strin
 		return fmt.Errorf("create temporary download file: %w", err)
 	}
 	temporaryPath := temporary.Name()
-	defer os.Remove(temporaryPath)
+	defer func() { _ = os.Remove(temporaryPath) }() // Best-effort removal, including after rename.
 
 	downloadErr := a.downloadSignedContractFile(ctx, rawURL, expectedSize, temporary)
 	closeErr := temporary.Close()
@@ -168,7 +168,7 @@ func copyDownloadedFileNoReplace(temporaryPath string, outputPath string) error 
 	if err != nil {
 		return fmt.Errorf("open completed download file: %w", err)
 	}
-	defer source.Close()
+	defer func() { _ = source.Close() }() // Read-only source; copy and target close errors are checked below.
 
 	target, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -218,7 +218,7 @@ func (a *App) downloadSignedContractFile(ctx context.Context, rawURL string, exp
 		}
 		return fmt.Errorf("perform signed file download: request failed")
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }() // Response read errors are checked by the download path.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		a.logger.Error("signed contract file download failed", "host", parsedURL.Hostname(), "status_code", response.StatusCode)
 		return fmt.Errorf("signed file download failed with status %d", response.StatusCode)

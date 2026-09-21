@@ -273,7 +273,7 @@ func (c *Client) doOnce(ctx context.Context, method, fullURL string, headers htt
 	if err != nil {
 		return response, fmt.Errorf("perform open platform request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Read/status errors determine the request result.
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -307,7 +307,7 @@ func isRetryableNetworkError(err error) bool {
 		return false
 	}
 	var networkErr net.Error
-	return errors.As(err, &networkErr) && (networkErr.Timeout() || networkErr.Temporary())
+	return errors.As(err, &networkErr) && (networkErr.Timeout() || networkErr.Temporary()) //nolint:staticcheck // Preserve legacy retry behavior for existing transports implementing Temporary.
 }
 
 func wrapTraceError(traceID string, err error) error {
@@ -383,7 +383,7 @@ func (c *Client) DoStream(ctx context.Context, requestContext RequestContext, re
 		c.logger.Error("perform open platform stream request failed", "method", method, "path", request.Path, "error", err.Error(), "trace_id", requestTrace.TraceID)
 		return response, wrapTraceError(requestTrace.TraceID, fmt.Errorf("perform open platform request: %w", err))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Read/status errors determine the request result.
 
 	response.StatusCode = resp.StatusCode
 	response.Headers = resp.Header.Clone()
@@ -548,13 +548,6 @@ func defaultIdentity(profile config.Profile) config.IdentityKind {
 		return config.IdentityUser
 	}
 	return profile.DefaultIdentity
-}
-
-func emptyFallback(value, fallback string) string {
-	if strings.TrimSpace(value) == "" {
-		return fallback
-	}
-	return value
 }
 
 func validateIdentityPolicy(identity config.IdentityKind, policy IdentityPolicy, path string) error {

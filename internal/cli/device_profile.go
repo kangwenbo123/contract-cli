@@ -22,7 +22,7 @@ func (a *App) loadDeviceAwareProfile(profileName string) (config.Profile, error)
 		if err := a.validateProductionDeviceCredentialIfAvailable(profile); err != nil {
 			return config.Profile{}, err
 		}
-		return profile, nil
+		return a.restoreLocalDeviceIdentity(profile)
 	}
 
 	normalizedProfileName := strings.TrimSpace(profileName)
@@ -33,14 +33,14 @@ func (a *App) loadDeviceAwareProfile(profileName string) (config.Profile, error)
 	workTaskSession, inDoubaoWorkTask := a.lookupEnv("SESSION_ID")
 	hasAgentKitWorkspace := inAgentKit && strings.TrimSpace(agentKitWorkspace) != ""
 	hasDoubaoWorkTask := inDoubaoWorkTask && strings.TrimSpace(workTaskSession) != ""
-	if !hasAgentKitWorkspace && !hasDoubaoWorkTask {
-		return config.Profile{}, profileNotFoundError(profileName)
-	}
-	runtimeContext, err := credential.ResolveDeviceRuntime(a.lookupEnv)
+	runtimeContext, err := a.resolveDeviceRuntime()
 	if err != nil {
+		if !hasAgentKitWorkspace && !hasDoubaoWorkTask {
+			return config.Profile{}, profileNotFoundError(profileName)
+		}
 		return config.Profile{}, err
 	}
-	if runtimeContext.Kind != credential.DeviceRuntimeDoubaoCloud && runtimeContext.Kind != credential.DeviceRuntimeDoubaoWorkTask {
+	if runtimeContext.Kind != credential.DeviceRuntimeDoubaoCloud && runtimeContext.Kind != credential.DeviceRuntimeDoubaoWorkTask && runtimeContext.Kind != credential.DeviceRuntimeLocalUser {
 		return config.Profile{}, profileNotFoundError(profileName)
 	}
 

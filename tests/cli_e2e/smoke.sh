@@ -39,5 +39,7 @@ assert_contains "$environment_output" '"detector_version": "process-ancestry-v6"
 
 skills_output="$("$TMP_DIR/contract-cli" skills list)"
 assert_contains "$skills_output" "contract-cli-contract"
+assert_contains "$skills_output" "contract-cli-employee"
+assert_contains "$skills_output" "contract-cli-department"
 
 echo "smoke ok: $VERSION $COMMIT"

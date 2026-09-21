@@ -89,7 +89,7 @@ func TestMCPCommandsUseUserIdentityAndExpectedEndpoints(t *testing.T) {
 		},
 		{
 			name:         "contract search user",
-			args:         []string{"contract", "search", "--profile", "contract", "--as", "user", "--input-file", searchFile, "--contract-number", "CN-001", "--page-size", "20", "--user-id", "ou_user_1", "--user-id-type", "employee_id"},
+			args:         []string{"contract", "search", "--profile", "contract", "--as", "user", "--input-file", searchFile, "--contract-number", "CN-001", "--page-size", "20", "--user-id", "ou_user_1", "--user-id-type", "user_id"},
 			wantMethod:   http.MethodPost,
 			wantPath:     "/open-apis/contract/v1/mcp/contracts/search",
 			wantQuery:    map[string]string{"user_id_type": "user_id", "user_id": "ou_user_1"},

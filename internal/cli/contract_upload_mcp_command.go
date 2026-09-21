@@ -118,7 +118,7 @@ func decodeContractFileUploadSession(body []byte, fileSize int64, now time.Time)
 func (a *App) uploadContractAttachmentContent(ctx context.Context, session contractFileUploadSession, input contractsvc.UploadFileInput) error {
 	a.logger.Info("user attachment content upload started")
 	body, contentType := contractsvc.UploadSessionContentBody(input.FileName, input.File)
-	defer body.Close()
+	defer func() { _ = body.Close() }() // Closing the input stream only releases multipart resources.
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, session.UploadURL, body)
 	if err != nil {
 		return errors.New("build attachment content upload request failed")
@@ -132,7 +132,7 @@ func (a *App) uploadContractAttachmentContent(ctx context.Context, session contr
 	if err != nil {
 		return sanitizeAttachmentUploadError("content", &openplatform.UncertainWriteError{Cause: err})
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }() // Read/status errors determine the request result.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		statusErr := fmt.Errorf("content upload failed with status %d", response.StatusCode)
 		if response.StatusCode >= http.StatusInternalServerError {

@@ -64,7 +64,7 @@ func TestDownloadRejectsInvalidOutputBeforeRequest(t *testing.T) {
 	for _, flags := range [][]string{{"--output", "invalid"}, {"--raw", "--output", "json"}} {
 		app := cli.New(cli.Options{Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}, HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { t.Fatal("unexpected request"); return nil, nil })}})
 		err := app.Run(context.Background(), append([]string{"contract", "download-file", "123"}, flags...))
-		if err == nil || !(strings.Contains(err.Error(), "output") || strings.Contains(err.Error(), "raw")) {
+		if err == nil || (!strings.Contains(err.Error(), "output") && !strings.Contains(err.Error(), "raw")) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	}

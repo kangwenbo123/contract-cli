@@ -15,14 +15,6 @@ func TestContractSkillFieldReferencesCoverDocumentedCommands(t *testing.T) {
 	skillContent := readTextFile(t, skillPath)
 
 	referenceFragments := map[string][]string{
-		"search-contract-fields.md": {
-			"contract search --as user",
-			"contract search --as app",
-			"contract search-v2 --as app",
-			"search-user-parameters.md",
-			"search-app-parameters.md",
-			"search-v2-parameters.md",
-		},
 		"contract-response-fields.md": {
 			"contract-cli contract get",
 			"contract_id",

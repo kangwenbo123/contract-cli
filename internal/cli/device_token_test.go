@@ -171,7 +171,7 @@ func TestDeviceTokenRefreshFailsWhenAnotherProcessOwnsLock(t *testing.T) {
 	if err != nil || !locked {
 		t.Fatalf("TryLock() = %v, %v", locked, err)
 	}
-	defer lock.Unlock()
+	defer func() { _ = lock.Unlock() }()
 
 	_, err = app.refreshDeviceToken(context.Background(), mustDeviceProfile(t, app.store), "old-access", false)
 	if err == nil || !strings.Contains(err.Error(), "already in progress") {
@@ -194,7 +194,7 @@ func TestDeviceAuthorizationAndRefreshShareCredentialOperationLock(t *testing.T)
 	if err != nil || !locked {
 		t.Fatalf("authorization TryLock() = %v, %v", locked, err)
 	}
-	defer authorizationLock.Unlock()
+	defer func() { _ = authorizationLock.Unlock() }()
 
 	refreshLock, err := app.deviceRefreshLock("contract")
 	if err != nil {
@@ -233,7 +233,7 @@ func TestWorkBuddyAuthorizationAndRefreshShareCredentialOperationLock(t *testing
 	if err != nil || !locked {
 		t.Fatalf("authorization TryLock() = %v, %v", locked, err)
 	}
-	defer authorizationLock.Unlock()
+	defer func() { _ = authorizationLock.Unlock() }()
 
 	refreshLock, err := app.deviceRefreshLock("contract")
 	if err != nil {
@@ -280,7 +280,7 @@ func TestWorkBuddyTasksUseIsolatedCredentialOperationLocks(t *testing.T) {
 	if err != nil || !locked {
 		t.Fatalf("task-a TryLock() = %v, %v", locked, err)
 	}
-	defer lockA.Unlock()
+	defer func() { _ = lockA.Unlock() }()
 
 	lockB, err := newApp("task-b").deviceAuthorizationLock("contract")
 	if err != nil {
@@ -290,7 +290,7 @@ func TestWorkBuddyTasksUseIsolatedCredentialOperationLocks(t *testing.T) {
 	if err != nil || !locked {
 		t.Fatalf("task-b TryLock() = %v, %v; WorkBuddy tasks must use isolated locks", locked, err)
 	}
-	defer lockB.Unlock()
+	defer func() { _ = lockB.Unlock() }()
 }
 
 func TestDoubaoWorkTaskUsesSessionIsolatedLockAndQRCodePaths(t *testing.T) {
@@ -317,7 +317,7 @@ func TestDoubaoWorkTaskUsesSessionIsolatedLockAndQRCodePaths(t *testing.T) {
 	if err != nil || !locked {
 		t.Fatalf("task-a TryLock() = %v, %v", locked, err)
 	}
-	defer lockA.Unlock()
+	defer func() { _ = lockA.Unlock() }()
 	qrA, err := app.writeAuthorizationQRCode("contract", "https://auth.example/device?user_code=a")
 	if err != nil {
 		t.Fatal(err)
@@ -337,7 +337,7 @@ func TestDoubaoWorkTaskUsesSessionIsolatedLockAndQRCodePaths(t *testing.T) {
 	if err != nil || !locked {
 		t.Fatalf("task-b TryLock() = %v, %v; Doubao tasks must use isolated locks", locked, err)
 	}
-	defer lockB.Unlock()
+	defer func() { _ = lockB.Unlock() }()
 	qrB, err := app.writeAuthorizationQRCode("contract", "https://auth.example/device?user_code=b")
 	if err != nil {
 		t.Fatal(err)
