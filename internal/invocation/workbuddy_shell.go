@@ -47,7 +47,7 @@ func workbuddyShellEnvironment(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // Read-only metadata; read errors determine detection below.
 	// The installed product file includes extensive UI config (~384 KiB).
 	// Bound the read while allowing that real runtime metadata.
 	data, err := io.ReadAll(io.LimitReader(file, 1024*1024+1))

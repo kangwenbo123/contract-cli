@@ -1813,10 +1813,6 @@ func TestAuthLogoutAppKeepsUserTokenAndCredentials(t *testing.T) {
 	}
 }
 
-type discoveryServer struct {
-	protectedResourceMetadataURL string
-}
-
 func TestAuthDeviceInitPreflightsCredentialStoreBeforeRemoteRequestOrProfileMutation(t *testing.T) {
 	store := config.NewStore(t.TempDir())
 	legacyToken := &config.Token{AccessToken: "legacy-access", Expiry: fixedCLINow().Add(time.Hour)}
@@ -2438,6 +2434,7 @@ func TestAuthDeviceCompleteSaveFailureRequiresFreshAuthorizationWithoutRetry(t *
 func TestAuthDeviceStatusAndLogoutUseCredentialStoreAndRevoke(t *testing.T) {
 	stdout := &bytes.Buffer{}
 	store := config.NewStore(t.TempDir())
+	workspace := t.TempDir()
 	credentials := &memoryDeviceCredentialStore{values: map[string]credential.DeviceCredential{
 		"contract": {Token: &config.Token{
 			AccessToken: "secret-access", RefreshToken: "secret-refresh", Scope: "contract:full contract-review:full", Expiry: fixedCLINow().Add(time.Hour),
@@ -2456,6 +2453,12 @@ func TestAuthDeviceStatusAndLogoutUseCredentialStoreAndRevoke(t *testing.T) {
 	revokeCalls := 0
 	app := cli.New(cli.Options{
 		Stdout: stdout, Store: store, CredentialStore: credentials, Now: fixedCLINow,
+		LookupEnv: func(name string) (string, bool) {
+			if name == "SKILL_SESSION_WORKSPACE" {
+				return workspace, true
+			}
+			return "", false
+		},
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			revokeCalls++
 			if err := req.ParseForm(); err != nil {
@@ -2521,13 +2524,6 @@ func (s *memoryDeviceCredentialStore) Save(profileName string, value credential.
 func (s *memoryDeviceCredentialStore) Delete(profileName string) error {
 	delete(s.values, profileName)
 	return nil
-}
-
-func newDiscoveryServer(t *testing.T) discoveryServer {
-	t.Helper()
-	return discoveryServer{
-		protectedResourceMetadataURL: "https://example.test/.well-known/oauth-protected-resource",
-	}
 }
 
 func fixedCLINow() time.Time {

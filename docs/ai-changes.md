@@ -1,5 +1,325 @@
 # AI 变更记录
 
+- 2026-09-21
+  变更摘要：将合同搜索 Skill 调整为“页面默认关键词＋实体/字段引导”的混合路由。
+  涉及文件/模块：搜索主 Skill、openai.yaml、全部关键词与引导参考、路由回归测试。
+  关键逻辑/决策：显式关键词和无实体依据的普通词直接查页面默认十二字段；明确角色走精确筛选，强推测先查候选或字段元数据再引导。
+  关键逻辑/决策：“搜索毛鹏”“查华东”默认关键词；“毛鹏的合同”保留人员引导；“项目区域为华东”先发现字段。
+  页面映射：区分 UI 业务分类与十二个实际请求单元，不把默认人员关键词字段交付为申请人精确筛选。
+  验证：新增路由回归先失败后通过；Skill 官方格式校验通过；internal/cli 测试通过；golangci-lint 0 issues。
+  交付：重建未发布的 1.9.2-beta.1 本地包，release-check、六平台资产、双层校验和及隔离安装通过。
+  本机同步：从重建包向 Codex/agents 两处安装 14 个 1.9.2-beta.1 Skill；搜索 Skill 含最新混合路由。
+
+- 2026-09-21
+  变更摘要：生成 contract-cli 1.9.2-beta.1 本地交付包，未发布 GitHub Release 或 npm。
+  涉及文件/模块：package.json、CHANGELOG.md、六个平台二进制资产、npm 离线包与交付校验信息。
+  关键逻辑/决策：保留当前工作区全部改动，通过隔离暂存快照构建，排除既有忽略文件 mcp.yaml 对发布检查的干扰。
+  产物：dist/local-package-1.9.2-beta.1-20260921，包含 npm tgz、release-assets、SHA256SUMS 和 BUILD-INFO.json。
+  验证：release-check 全量通过；golangci-lint 0 issues；六个平台资产校验通过；隔离安装版本正确且 14 个 Skill 全部安装成功。
+
+- 2026-09-21
+  变更摘要：优化合同搜索 Skill 的自动发现入口，使客户自然语言能稳定路由到搜索能力。
+  涉及文件/模块：contract-cli-contract-search 的 SKILL.md、agents/openai.yaml 及发现性回归测试。
+  关键逻辑/决策：description 覆盖查合同、文本、日期状态、人员部门、交易方/我方主体和自定义字段；保留详情 Skill 边界。
+  关键逻辑/决策：默认提示先由 Agent 查询候选和字段元数据，仅剩业务歧义时询问，并完整分页区分合同组与条目。
+  对外对齐：采用“智书合同 CLI”产品名和客户文档中的自然语言入口；保持隐式调用开启。
+  验证：发现性回归、搜索 Skill 回归和官方格式校验通过；golangci-lint 0 issues；全库仅剩既有 mcp.yaml 缺 get-employees 对齐失败。
+  本机同步：以 1.9.1-beta.1 内嵌格式同步 Codex/agents 两处搜索 Skill；文件需在刷新或新建会话后加载。
+
+- 2026-09-21
+  变更摘要：按用户指定将本地测试包版本更新为 1.9.1-beta.1，从当前工作区重新打包安装。
+  涉及文件/模块：package.json、CHANGELOG.md、本机 npm 安装与内嵌 Skills；未发布远端版本。
+  关键逻辑/决策：旧 1.9.0-beta.1 产物缺少人员/部门和最新搜索总纲，使用干净暂存目录构建本机 darwin/arm64 离线包，避免旧内置二进制优先安装。
+  验证：包元数据/Skill回归及安装器测试通过；临时前缀离线安装、6项命令检查与内嵌14个Skill/106文件校验通过。
+  本机交付：~/.local/bin/contract-cli 已为1.9.1-beta.1；Codex/agents两处14个Skill均同步该版本，逐文件哈希一致，原授权配置未变。
+  产物与备份：dist/local-install-1.9.1-beta.1-20260921；~/.codex/backups/contract-cli-1.9.1-beta.1-20260921-095609。
+
+- 2026-09-20
+  变更摘要：搜索 Skill 重整五步总纲，先授权/身份分流，再按明确对象、字段和纯关键词选择路径。
+  涉及文件/模块：搜索主文件、shared 授权分流、搜索参考、mdm-legal 查询参考、总纲接口缺口复核文档。
+  关键逻辑/决策：指定申请人优先候选消歧与ID筛选，姓名关键词仅显式需求保留；自定义先发现、歧义才问，明确文本/编号/日期不降级为全部关键词。
+  关键逻辑/决策：user/app契约隔离；我方及归属人/创建人不虚构精确ID字段；授权状态不等于当前业务人员ID。
+  接口分析：基础候选命令已齐；优先补我方精确契约与交易方ID元数据，页面全部语义/复杂AND/本人身份按范围补齐，不重复新增列表。
+  验证范围：总纲复用既有对照；用户追加确认后实测生产 user 法人主体列表1候选及同ID详情均成功，证据 /tmp/contract-legal-user-sa0s0h1y；未修改运行代码或服务端接口。
+  验证：Skill/引用/场景及安全文案回归、32段JSON、搜索Skill格式和11项离线路由复核通过；shared/legal通用格式校验在临时副本去除既有CLI version字段后通过。
+  本机同步：重建1.9.0-search.local，搜索/shared/mdm-legal共25文件同步Codex/agents并校验；备份 ~/.codex/backups/contract-search-guideline-20260920-202253。
+
+- 2026-09-20
+  变更摘要：生产验证需求人张洋＋指定交易方，新增交易方组合配方并区分精确主体 ID、名称关键词与 legacy label。
+  涉及文件/模块：搜索 Skill 主文件、trading-party.md、需求人/字段/组合/引导参考、contract-search-validation.md。
+  关键逻辑/决策：保留需求人外部 user_id，交易方精确筛选使用 CONTRACT_TRADING_PARTY_ID；现有 mdm vendor list 按名称获取真实候选，无需用户找 ID。
+  验证：两个真实 ID 完整命中截图1条1组，更换真实交易方为零；名称文本正反1/0；另一需求人加已知名称限制为零。
+  验证：页面枚举ID数组无label为零；带正确label命中，更换错误主体ID仍命中，证明该分支不能用来验证精确ID；交易方单查未查完不报总量。
+  关键逻辑/决策：记录元数据未暴露_ID的缺口、camelCase候选分页与合同组边界；保留并行新增的人员/部门查询路由。
+  验证：独立 Agent 只读事实边界复核通过；本轮未修改 CLI 运行代码。
+  验证：搜索场景/引用/安装回归、32 段 JSON、Skill 格式通过；两份新增模板与真实成功请求脱敏后完全一致。
+  本机同步：重建内嵌并校验15个文件至Codex/agents，版本1.9.0-search.local；备份 ~/.codex/backups/contract-search-trading-20260920-195233。
+
+- 2026-09-20
+  变更摘要：确认 1.9.0-beta.1 在豆包 Linux 云端仍按任务隔离，记录跨任务登录复用缺口与平台接入要求。
+  涉及文件/模块：docs/doubao-cloud-auth-reuse.md；未修改运行代码、安装包或真实凭证。
+  关键逻辑/决策：现场 cloud-runtime + Credential Scope=task；任务目录和加密密钥均依赖 SESSION_ID，既有本机共享不覆盖该环境。
+  关键逻辑/决策：需要平台账号级持久化或可验证身份衔接后再接凭证托管；不能仅移除任务 ID 或扩大 Linux 共享范围。
+  验证：现有任务加密隔离、云端标记优先和弱证据拒绝共享用例通过；尚未实现或验收云端跨任务复用。
+
+- 2026-09-20
+  变更摘要：新增顶层 employee list、department list 及两个独立 Skill，补齐姓名/部门名到合同筛选 ID 的查询流程。
+  涉及文件/模块：directory 命令/帮助/合同 Service/MCP ToolSpec、日志脱敏、独立 Skill、shared/search 路由、命令文档与打包验收。
+  关键逻辑/决策：只读 user-only；部门单值映射 department_collection；人员固定 user_id；原样保留状态、ID、未知字段及分页，不自动选择候选。
+  关键逻辑/决策：名称与部门 ID 互斥，人员必须有条件，部门允许一页目录；限制 page-size 1–200；业务失败错误退出。
+  验证：请求/响应、身份、校验、安装和目录→合同回归先红后绿；独立复核补充网络/HTTP 失败最终日志保护。
+  验证：目录定向测试覆盖100%，全库race通过（跳过既有旧mcp.yaml对齐）；lint 0 issues、npm包清单、CLI smoke和Skill格式通过。
+  生产：新CLI查询人员/部门候选各1项，部门人员10项，需求人合同1条、需求部门合同35条，全部查完；证据 /tmp/contract-directory-live-1u5wa88f。
+  本地交付：bin/contract-cli-directory（1.9.0-directory.local）；4个相关Skill同步Codex/agents，备份 ~/.codex/backups/contract-directory-20260920-193417，未发布。
+
+- 2026-09-20
+  变更摘要：实测合同需求人张洋，新增需求人查询三段式配方并同步搜索路由、字段及引导说明。
+  涉及文件/模块：搜索 Skill 主文件、demand-person.md、user 参数/字段发现/引导参考、contract-search-validation.md。
+  关键逻辑/决策：需求人 filter 使用外部 user_id；从已知合同详情取得候选并核对身份、回填验证，不用姓名或 PC 内部 ID，不默认要求用户找技术 ID。
+  验证：同名样本消歧后，真实需求人筛选完整 1 条/1 组与截图对应；姓名、内部 ID 和另一有效用户加已知名称限制均为零。
+  关键逻辑/决策：详情 ID 转换受配置影响，多需求人需消歧；历史 combine 参数存在契约冲突，采用当前元数据指定的 filter 路径。
+  验证：独立 Agent 只读复核元数据、真实请求/响应及 Skill 事实边界通过；本轮未修改 CLI 运行代码。
+  验证：搜索场景/引用/安装回归、30 段 JSON 及 Skill 格式通过；新增示例与真实请求脱敏后一致。
+  本机同步：重建 1.9.0-search.local 内嵌并逐文件校验14个文件，同步Codex/agents；备份 ~/.codex/backups/contract-search-demand-20260920-192642。
+
+- 2026-09-20
+  变更摘要：获姓名确认后完成第 3、4 项生产对照，补全申请人＋关键词 ID 配方与姓名＋状态直接查询配方。
+  涉及文件/模块：搜索 Skill 主文件、applicant-status.md、组合/字段/全部关键词/引导参考、contract-search-validation.md。
+  关键逻辑/决策：姓名与多字段 OR 组合会放宽，改用返回的外部 ID；只有一个姓名关键词加独立状态可直接查询，不统一要求先找 ID。
+  验证：第 3 项 ID 组合完整 3 组/5 条与基线目标子集一致、无匹配词为零；真姓名 MUST 首批就扩大至 50 组，不视为总量。
+  验证：第 4 项姓名/ID＋状态10均完整 3 组/5 条且集合相同；无匹配姓名零、已知合同状态10/11正反1/0；PC状态filter业务失败。
+  关键逻辑/决策：区分组展开中的3条变更中与2条审批中；报告各条真实状态，完整取回后再核对是否同一条目满足所有条件。
+  验证：搜索场景/引用/安装回归、29 段 JSON 与 Skill 格式通过；3 份新增示例与真实请求脱敏后完全一致，独立复核通过。
+  本机同步：重建 1.9.0-search.local 内嵌并校验同步13个文件至Codex/agents；备份 ~/.codex/backups/contract-search-status-20260920-190205。
+
+- 2026-09-20
+  变更摘要：补充全部关键词与申请人姓名 AND 的失败反例，以及 Agent 自动获取申请人外部 ID 的来源规则。
+  涉及文件/模块：搜索 Skill 主文件、组合/全部关键词/引导参考及逐项验证记录。
+  关键逻辑/决策：无候选申请人姓名 MUST 被服务端移除，不能交付为 AND 结果；复用返回的 submitter_user_id，区别 PC 内部 ID，不默认向用户索要 ID。
+  验证：十二字段毛鹏追加无匹配申请人姓名 MUST 仍返回同一完整 30 条/27 组；具体人员正例待用户确认“范学东”与截图“范学冬（Peter）”的差异。
+  验证：搜索场景/引用/安装回归、26 段 JSON 和独立 Agent 证据/路由检查通过；未将待确认的具体人员对照写为通过。
+  本机同步：重建内嵌 Skill 并逐文件核验同步 Codex/agents；备份 ~/.codex/backups/contract-search-applicant-20260920-185253。
+
+- 2026-09-20
+  变更摘要：实测页面“全部”关键词毛鹏，新增三段式搜索配方并同步主入口、字段、文本及引导说明。
+  涉及文件/模块：搜索 Skill、agents/openai.yaml、all-keyword-search.md 及相关参考、contract-search-validation.md。
+  关键逻辑/决策：保留十二字段同词 SHOULD；区别归属人、申请人与文本范围；不传 MCP 未声明的 allConditionUnits，记录候选差异及分号编号限制。
+  验证：生产完整 30 条/27 组与页面计数及可见样本对应，无匹配词 0 条；申请人单查 25 条/24 组，不能代替全部关键词。
+  验证：搜索场景/引用/安装回归、26 段 JSON 与 Skill 格式通过；新 JSON 与实测请求一致，独立 Agent 路由及证据复核通过。
+  本机同步：重建 1.9.0-search.local 内嵌 Skill，12 个文件校验同步 Codex/agents；备份 ~/.codex/backups/contract-search-keyword-20260920-184534。
+
+- 2026-09-20
+  变更摘要：将全部搜索实测逐项映射回 Skill，补合同申请日期、计数与时间精度边界。
+  涉及文件/模块：搜索 Skill 主文件与申请日期/字段/组合/引导参考、场景回归、contract-search-validation.md。
+  关键逻辑/决策：申请日期走 combine 的 submited 字符串路径；页面毫秒 filter 不可照搬；区分 103 组/110 条与展平排序，不将返回毫秒当作筛选精度保证。
+  关键逻辑/决策：名称＋状态及续页统一到实测 combine 路径；补数值保真证据范围，收窄未验证能力的表述。
+  验证：生产两日日期完整分页、7 个页面样本、38 条已归档子集及日期反例通过；末秒毫秒边界与自定义日期仍未宣称验证通过。
+  验证：场景回归先红后绿，搜索/引用/安装回归及 25 段 JSON、Skill 格式通过；独立复核通过，lint 0 issues。
+  本机同步：重建 1.9.0-search.local 内嵌 Skill，11 个文件逐一校验并同步 Codex/agents；备份 ~/.codex/backups/contract-search-date-20260920-184013。
+
+- 2026-09-20
+  变更摘要：逐项实测搜索组合，修复 JSON 数值保真与 user ID 类型静默忽略，统一搜索 Skill 字段及结果说明。
+  涉及文件/模块：共享 JSON 解析、search 参数/帮助与回归、MCP 端点回归；搜索 Skill 主文件及字段/组合/引导参考、逐项验证记录。
+  关键逻辑/决策：UseNumber 保留数字且拒绝多文档；user 显式非法 ID 类型提前报错，app 保持透传；新搜索日志只记错误类型。
+  关键逻辑/决策：按实测支持名称、真实申请人 ID、顶层批量编号与正文组合；固定金额闭区间和单边 null；多词 AND 不可靠，部门/自定义日期缺样本不宣称验证通过。
+  验证：新增回归先红后绿；实际结果集正反对照通过，数值修复后真实金额结果一致；自定义币种整数类型仅由生产元数据确认，零结果不作为阳性证明。
+  验证：CLI 与其余包 race 通过，旧 ignored mcp.yaml 独立对齐检查缺新工具仍失败；lint 0 issues，Skill 格式/安装/示例及 6 项独立行为验证通过。
+  本机同步：生成 bin/contract-cli-search-optimization（1.9.0-search.local），仅搜索 Skill 已备份同步 Codex/agents；正式 PATH CLI 仍为 1.8.6，未发布。
+
+- 2026-09-20
+  变更摘要：生产复现并修复 user 合同搜索将业务失败报告为进程成功的问题。
+  涉及文件/模块：contract_command.go、contract_search_response_test.go、搜索 Skill、contract-search-validation.md。
+  关键逻辑/决策：user 复用 MCP envelope 校验并保留响应，app 契约不变；日志不记录搜索值或合同内容。
+  验证：回归先红后绿；同一生产 code=110000 请求退出码从 0 变为 1，正常正文查询返回 18 条且 has_more=false。
+
+- 2026-09-20
+  变更摘要：按用户指定将本地 Device 共享安装包版本调整为 1.9.0-beta.1，重新构建交付。
+  涉及文件/模块：package.json、CHANGELOG.md、六平台二进制、npm 离线包与内嵌 Skills。
+  关键逻辑/决策：沿用已通过 race / lint 的源码快照，仅调整发布版本；保持其他任务的并行改动原样。
+  验证：六平台重建及 SHA-256 校验通过；1.9.0-beta.1 全新目录离线安装成功，CLI 与 12 个内嵌 Skills 版本一致。
+
+- 2026-09-20
+  变更摘要：搜索 Skill 增加引导式澄清，明确需求直接查询，有业务歧义时用字段、匹配方式和值反问。
+  涉及文件/模块：查询 Skill 主文件、agents/openai.yaml、references/guided-search.md、搜索字段发现参考。
+  关键逻辑/决策：元数据候选有来源；多候选中立选择；保留已确认条件，修改条件清除分页 token；用户确认不能代替接口能力验证。
+  验证：现有搜索场景、引用及安装回归通过，Skill 格式校验通过；独立 Agent 离线验证 6 类对话行为，无生产调用。
+  本机同步：仅本次查询 Skill 文件已备份并同步至 Codex/agents，保留安装版本；备份目录为 ~/.codex/backups/contract-search-guidance-20260920-174653。
+
+- 2026-09-20
+  变更摘要：Device 授权在确认的本机桌面环境按系统用户与 profile 跨任务复用，生成 1.9.0-beta.1 本地安装包。
+  涉及文件/模块：internal/credential、internal/cli 的 Device 授权/存储/锁/状态/测试，auth/shared/contract Skills、README、package.json；清理全库既有 lint 问题。
+  关键逻辑/决策：复用来源证据选择存储范围；本地用独立系统安全存储命名空间，云端/未知保持任务隔离，不迁移旧任务凭证；真实 OS 用户目录承载共享锁。
+  关键逻辑/决策：init 复用有效授权并按需刷新；刷新、授权和退出共用锁；空 profile 可恢复共享身份；旧授权码显式模式保留。
+  验证：新增回归先红后绿；发布源码快照 go test -race ./... 通过，原工作树 lint 0 issues；本地旧 ignored mcp.yaml 保留且不打包，独立对齐检查按既有逻辑跳过。
+
+- 2026-09-20
+  变更摘要：从场景引导、字段契约、组合逻辑到结果恢复，完成搜索能力 Agent 友好性评估并记录改进优先级。
+  涉及文件/模块：`docs/contract-search-agent-review.md`；未修改搜索实现或 Skill。
+  关键逻辑/决策：保留三段式场景，优先修正组合语义和执行一致性，再完善元数据转换、字段角色/边界与追加查询流程。
+  验证：三个独立 Agent 评估；生产小范围只读复现无匹配姓名 MUST + 正文返回正文结果；临时 mock 复现业务错误信号、数值及 ID 类型问题，诊断测试已清理。
+
+- 2026-09-20
+  变更摘要：新增 user-only `contract search-fields`，按 MCP `list-contract-search-filter-fields` 契约发现搜索字段元数据。
+  涉及文件/模块：CLI 路由/命令/帮助、MCP ToolSpec、合同 Service、契约/命令测试、查询及共享 Skill、命令文档与测试计划。
+  关键逻辑/决策：仅透传可选 keyword，清除无关 query；完整保留响应及数值，业务失败保留输出并返回错误；人员/部门列表及既有 search 行为不变。
+  验证：TDD 红→绿，CLI/合同 Service 全包通过；生产真实字段发现→元数据构造搜索及无匹配字段成功；全量受旧 ignored mcp.yaml 阻断，lint 仍有既有 42 项，本次无新增。
+  本机同步：独立开发版输出至 bin/contract-cli-search-fields（1.8.6-search-fields.local）；查询及共享 Skill 已备份并同步 Codex/agents，正式 CLI 1.8.6 保留。
+
+- 2026-09-20
+  变更摘要：生产实测申请人姓名关键词搜索，将查询 Skill 场景 6 从仅 ID 模板改为直接按姓名查询。
+  涉及文件/模块：查询 Skill 主文件、user 参数参考、搜索对齐记录、场景 JSON 回归测试。
+  关键逻辑/决策：姓名使用 CONTRACT_SUBMIT_NAME/string/SHOULD，无需人员列表；精确人员和“我申请的”仍需可靠 ID，保留重名与历史人员边界。
+  验证：生产完整姓名与部分姓名各首批 20 条且有后续页，无匹配姓名 0 条，部门名称对照成功；回归测试先失败后通过，Skill 结构及安装校验通过；lint 仍为既有 42 项。
+
+- 2026-09-20
+  变更摘要：将查询 Skill 改为 9 个独立场景，每个场景固定“用户怎么说、应该怎么查、示例 JSON”三段结构。
+  涉及文件/模块：查询 Skill 主文件、Agent 提示、场景 JSON 回归测试。
+  关键逻辑/决策：说明与完整请求就近排列，拆开人员和部门；人员、自定义字段、续页例子明确是前置条件满足后才可执行的模板。
+  验证：先以 3 个示例不满足 9 场景复现失败，再校验文本范围、组合条件、日期角色和续页完整保留原请求；无生产调用。
+
+- 2026-09-20
+  变更摘要：在独立查询 Skill 主文件内置 8 类 user 搜索场景提示与 3 个可复用 JSON 请求。
+  涉及文件/模块：`skills/contract-cli-contract-search/SKILL.md`、Agent 提示、搜索示例回归测试。
+  关键逻辑/决策：自然语言映射到文本范围、页签、状态、编号、日期、候选发现和分页；示例保持正文与金额币种的 AND 关系，不将“我的合同”误作仅本人申请。
+  验证：先失败后通过；CLI 全包测试、Skill 格式校验、4 个独立 Agent 场景通过；全量仅本地 ignored mcp.yaml 缺少 list-process-comments 的既有对齐测试失败，lint 仍为已有 42 项。
+  本机同步：更新 Codex 与 agents 中的查询 Skill 并备份原内容；未执行生产组合查询。
+
+- 2026-09-20
+  变更摘要：将合同搜索独立为 `contract-cli-contract-search` Skill，迁移 user/app V1/app V2 参数并补齐合同文本搜索配方。
+  涉及文件/模块：`skills/contract-cli-contract-search`、原合同/共享 Skill、搜索及安装测试、README、CLI 参考与测试计划。
+  关键逻辑/决策：五类文本 SHOULD 与仅正文明确分离，业务失败不当空结果，按 has_more 翻页；旧参考保留跳转，搜索说明只有一个维护位置。
+  验证：先失败后通过；全量 Go 测试、新 Skill 校验、内嵌安装/链接、JSON 配方及 7 个 Agent 场景通过；lint 与 HEAD 基线一致仍报 42 项，无新增。
+  本机同步：从工作树安装查询/合同/共享三个 Skill 至 Codex 与 agents 目录并校验内容，安装版本标为 `1.8.6-search-skill.local`；保留备份和正式 CLI 1.8.6。
+
+- 2026-09-20
+  变更摘要：补充页面“合同文本”与 CLI 的生产查询对照，纠正此前空结果解释。
+  涉及文件/模块：`docs/contract-search-mcp-alignment.md`、`docs/ai-changes.md`。
+  关键逻辑/决策：正文 MUST 返回 0、SHOULD/默认返回 18；页面五文本字段 SHOULD 返回 19；将字段范围和条件语义分别纳入 Skill/搜索验收。
+  验证：同 profile、关键词、页签和 page_size 控制变量只读实测；未修改业务代码或生产数据。
+
+- 2026-09-20
+  变更摘要：记录 CLI 1.8.6 与生产 MCP 合同搜索的对齐范围及只读验证结果，尚未实现新命令。
+  涉及文件/模块：`docs/contract-search-mcp-alignment.md`、`docs/ai-changes.md`。
+  关键逻辑/决策：补齐字段/人员/部门发现，纳入 user_id_type、业务错误退出、JSON 保真和 Skill 编排；以生产真实响应为基线，不将本地 V2 契约视为已上线。
+  验证：搜索及元数据小范围只读实测、正常部门到人员链路验证通过；复现业务错误退出码为 0；现有搜索与 MCP 契约定向测试通过。
+
+- 2026-09-20
+  变更摘要：按用户要求将 dev001 的 search-contracts 从 Unbox semantic 契约恢复为原版 contract-group 搜索。
+  涉及文件/模块：`mcp-config-dev001-optimized.yaml`、`docs/mcp-dev001-optimization.md`、`docs/ai-changes.md`。
+  关键逻辑/决策：以 dev-contract-charts 提交 c306fb2f8 的完整搜索定义为准，补回依赖的 list-contract-search-filter-fields；共 31 个工具，其他 29 个及 server 完全不变；仅本地修改、未部署。
+  验证：先红后绿；8 项回归测试、31 个输入 Schema 的 Higress 编译校验通过，原版搜索/字段发现元数据与当天 group 快照一致。
+
+- 2026-09-20
+  变更摘要：记录用户更新优化版后的在线握手与元数据一致性验证。
+  涉及文件/模块：`docs/mcp-dev001-optimization.md`。
+  关键逻辑/决策：2025-03-26 与 2025-06-18 均成功协商；线上 30 个工具的描述和输入/输出 Schema 与交付版一致；日志收录滞后，未声称完成业务端到端验收。
+
+- 2026-09-20
+  变更摘要：结合 group 和后端/网关源码生成 dev001 工具描述优化版，恢复正文重试规则、统一部门 ID 和人员匹配语义、补查询回执定义。
+  涉及文件/模块：`mcp-config-dev001-optimized.yaml`、`docs/mcp-dev001-optimization.md`、`docs/mcp-tool-description-comparison.md`。
+  关键逻辑/决策：仅移除定义不完整的 sync-user-groups（31→30）；保留工具的调用模板、鉴权、输入类型/默认值/必填约束全部不变；回执字段可选、value 保留任意 JSON 类型；未下发 Higress。
+  验证：先红后绿；30 个输入 Schema、23 个搜索输入用例、6 项输出 Schema 测试、调用契约差异检查及独立静态复核通过。
+
+- 2026-09-20
+  变更摘要：读取两个 MCP 服务的工具元数据，完成描述清晰度、Agent 可用性和契约兼容性评审。
+  涉及文件/模块：`docs/mcp-tool-description-comparison.md`、`docs/mcp-metadata/2026-09-20/`。
+  关键逻辑/决策：比较 31 个共同工具并单列 group 独有 25 个；建议以 dev 业务化契约为基础补回关键语义，标出搜索接口结构变化；仅保存元数据，不保存 token，未修改远端或调用业务工具。
+
+- 2026-09-20
+  变更摘要：补充用户更新 dev001 配置后的在线验证结果。
+  涉及文件/模块：`docs/mcp-dev001-schema-fix.md`。
+  关键逻辑/决策：握手正常、31 个工具元数据可读取且修复字段已生效；OpenObserve 确认请求由 MCP Wasm 处理，观察窗口无新增 Schema 加载错误；业务授权查询未执行。
+
+- 2026-09-20
+  变更摘要：生成 dev001 MCP 配置修正版，修复 `status_not_in.items` 被错误保存为字符串导致的 Schema 加载失败。
+  涉及文件/模块：`mcp-config-dev001-fixed.yaml`、`docs/mcp-dev001-schema-fix.md`。
+  关键逻辑/决策：仅展开为与 `status_in` 相同的 14 状态枚举；保留 `value_selectors` 原定义及 null 语义；未下发 Higress。
+  验证：先复现原配置错误，再以官方校验器验证 31 个工具通过；23 个输入用例、nullable 兼容性与唯一字段差异检查通过，并核对本地后端状态枚举。
+
+- 2026-09-10
+  变更摘要：新增 contract-skill-builder 元技能包（初版），供产品同学基于前端代码 / OpenObserve test 日志 / test MySQL 快速识别接口并生成业务 skill 骨架。
+  涉及文件/模块：`contract-skill-builder/`（SKILL.md、config.example.yaml、scripts/mysql_readonly.sh、scripts/MysqlTestQuery.java、examples/合同到期提醒.skill.md、README.md，均为新增）。
+  关键逻辑/决策：确立「代码候选 + 页面操作 + 日志验证 + 数据库校准」四源闭环；git clone 前端仓 master 拿候选接口，OpenObserve test SearchSQL 按用户+时间窗验证真实时序/参数，只读 MySQL 校验字段与写生效；敏感信息（git token / 日志账号密码 / db 密码）全部走 env 不落盘；生成骨架强制写操作人工确认节点；MysqlTestQuery.java 随包分发并封装只读 SQL 白名单。
+
+
+- 2026-09-10
+  变更摘要：新增 Skill 能力交付全链路信息图，用一张图展示 Web 接口底座、Skill 场景封装及评测发布平台。
+  涉及文件/模块：`docs/assets/skill-delivery-architecture-overview.png`（新增）。
+  关键逻辑/决策：采用三层递进结构；底层展示 1316+ Web 接口开放链路及安全底座，中层展示产品编排与 Agent 自由选型，上层展示五步评测发布流程；右侧独立呈现 30/30/25/15 评分权重和总分/安全双门槛。
+- 2026-09-10
+  变更摘要：新增 Skill 验证平台技术方案文档（含总体架构/运行时序/部署/对话微调等多张 mermaid 图例）。
+  涉及文件/模块：`docs/skill-eval-platform-architecture.md`（新增）。
+  关键逻辑/决策：确立「薄平台 + headless-agent 通用运行时 + 两个评测 skill（eval-case-gen / eval-run-report）+ 执行器工具 + 评分器」五层架构；明确智能（LLM）与确定（执行器/评分器）分离，执行走工具、评分走平台、对话复用 turn/steer 并加阶段限权；复用 agentCodex 内核 7 模块、替换 5 接线端；给出执行器工具与评分器接口草案、部署图（headless 实例池/每任务 dataDir/无 Electron）、关键数据契约、M1-M6 里程碑。
+- 2026-09-10
+  变更摘要：源码级重新分析 agentCodex 与 Skill 验证平台的结合方式，确认复用纯 Node 内核、无需桥接 Electron。
+  涉及文件/模块：`agentCodex/docs/skill-eval-integration.md`（新增）、`docs/skill-eval-agent-integration.md`（v2 修订）、`docs/skill-eval-platform-effort.md`（M4 由 8→4 人日，总量 50→46 人日）。
+  关键逻辑/决策：逐层确认 agent-session-service/codex-stdio-connection/codex-app-server-runtime/json-rpc-client/shared 均为纯 Node、依赖注入、无 electron 引用；main.ts 只是组装器；方案由「桥接 Electron」改为「复用内核抽 headless-agent」，替换 5 个 Electron 依赖（视觉/视频 stub、附件空实现、emit 接平台、models 配置化、logger），暴露 HTTP 接口；无需 Linux Electron 构建与 Xvfb；每评测任务 dataDir 解决单实例锁；改造量 3-5 人日。
+- 2026-09-10
+  变更摘要：新增 Skill 验证平台与 agentCodex 的集成架构文档，明确两个集成点与职责边界。
+  涉及文件/模块：`docs/skill-eval-agent-integration.md`（新增）。
+  关键逻辑/决策：平台=调度展示层，agentCodex=评测大脑；集成点①（M4）经桥接（推荐抽取 Main session-service 为 headless 服务）调用约 50 个无 UI IPC 能力驱动用例生成与审批应答；集成点②（M6）用例执行不走 Agent 对话而由平台执行器直调 B' 链路（确定性/可断言/可重放），Agent 仅做智能环节（生成场景、失败归因建议）；给出 skill 生命周期七步数据流与里程碑对应关系。
+- 2026-09-10
+  变更摘要：新增 Skill 验证平台工作量评估（基于 PRD 与 16 屏 UI 稿核对）。
+  涉及文件/模块：`docs/skill-eval-platform-effort.md`（新增）。
+  关键逻辑/决策：P0 全量 50 人日（单人全栈口径）≈ 2.5 人月，双人并行日历 3-4 周，含缓冲建议承诺 6.5-7 人周；模块拆解 M1 基座 5 / M2 上传解析 6 / M3 归档 4 / M4 Agent 桥接 8（成败点：CDP vs Main 服务抽取需先 PoC） / M5 确认工作台 6 / M6 沙箱执行 10（安全集中点） / M7 SSE 3 / M8 报告评分 5 / M9 导出通知 3；UI 稿 16 屏与 PRD 覆盖一致无大缺口（新增用例表单与版本时间线需确认口径）；列 4 项量化假设与 4 项前置依赖（B' 链路、清单 v2、linux 构建、评测租户）。
+- 2026-09-10
+  变更摘要：补齐 Skill 验证平台全流程 UI 设计，共 17 张页面与状态图，并新增业务流程索引。
+  涉及文件/模块：`docs/assets/skill-eval-platform-ui/*.png`、`docs/skill-eval-platform-ui-design.md`。
+  关键逻辑/决策：覆盖登录、列表/空态、上传成功/失败、详情、生成中/失败、用例确认/编辑、排队/执行/中止、通过/未通过报告；所有页面复用统一蓝白企业级设计系统，异常状态提供明确证据、恢复入口与安全确认。
+- 2026-09-10
+  变更摘要：新增 Skill 验证平台「用例确认」高保真 UI 图，用于产品评审与前端实现参考。
+  涉及文件/模块：`docs/assets/skill-eval-platform-case-confirmation-ui.png`（新增）。
+  关键逻辑/决策：围绕 P5 核心工作台出图；采用左侧导航、四步评测进度、五类用例表格、Agent 可解释侧栏与底部常驻执行栏；类别颜色、覆盖统计与写操作风险提示均按 PRD 表达。
+- 2026-09-10
+  变更摘要：新增 Skill 验证平台 PRD（供 UI 出图），覆盖 8 个页面、任务状态机、功能/非功能需求与数据契约。
+  涉及文件/模块：`docs/skill-eval-platform-prd.md`（新增）。
+  关键逻辑/决策：页面清单 P0-P8（登录/列表/上传/详情/生成中/用例确认/执行中/报告），核心交互页为用例确认（五类徽章配色 + 可解释侧栏 + 新增用例）与报告页（四维评分条 + 门禁徽章 + 一票否决提示 + 改进建议）；任务状态机 created→generating→awaiting_confirm→running→finished（含 failed/aborted 分支）；断线恢复用持久任务+推送；明确本期不做在线编辑/多角色/移动端/线上指标；附开发数据契约速查表。
+- 2026-09-10
+  变更摘要：澄清评测 Web 交互方案——agentCodex 服务器端无本地 UI，平台自建轻量 Web 经 Main IPC 协议桥接驱动。
+  涉及文件/模块：`docs/delivery-platform-design.md`（5.4 MVP 第 3 条扩充）。
+  关键逻辑/决策：基于代码证据（desktop-api.ts 约 50 个 IPC channel：send-message/decide-approval/answer-user-input/list-skills 等均为无 UI 纯协议调用），确定 Renderer 只是 Main 服务的消费者；推荐路线 i：平台 Web 后端经本地桥接调 Main 服务，Web 呈现任务时间线（生成用例→确认→执行→报告）而非聊天窗；路线 ii（remote-debugging 投屏）仅作应急兜底。
+- 2026-09-10
+  变更摘要：交付平台设计确认评测执行环境——agentCodex 服务端单机部署 + Web 页面使用，新增风险清单与 MVP 范围。
+  涉及文件/模块：`docs/delivery-platform-design.md`（第 5 节新增）。
+  关键逻辑/决策：部署形态为评测平台轻量 Web 服务 + 服务器上 agentCodex 实例（AI_ASSISTANT_USER_DATA_PATH 按会话隔离，代码已支持）；九大风险点：Linux 无头显示（建议 MVP 禁用 Computer Use/Git 页）、单实例锁（多 userData 实例解并发）、评测租户 token 托管（KMS+短时，禁用个人 token 跑写用例）、写副作用（测试租户+数据打标）、审批弹窗（协议自动应答或最高权限沙箱）、版本锁定、资源 8C32G/3-5 并发、缺 linux 构建目标需补；MVP 五步范围（Linux 构建、特性禁用、四页面 Web、串行起步、租户打标）。
+- 2026-09-10
+  变更摘要：交付平台设计 v2，吸收产品边界调整（skill 平台仅输出不绑定运行时；评测改为上传→Agent 生成用例→确认→执行→报告）。
+  涉及文件/模块：`docs/delivery-platform-design.md`（重写为 v2）。
+  关键逻辑/决策：交付物 2 明确「做输出/校验/组装助手，不做执行/绑定运行时/托管凭证」，skill 包以声明式 YAML + SKILL.md 公共子集保证 Codex/WorkBuddy/豆包均可装载；交付物 3 新增智能评测链路（五类场景：正常/边界/异常/权限/幂等，用户确认后用例集随版本归档复用）；评分维持 30/30/25/15 与 ≥80 且安全 ≥90，新增写用例失败一票否决，「运行时表现」本版以试跑耗时/稳定性折算；MCP 建议保留 SSOT+派生+治理复用；列出 4 项待确认（评测 Agent 载体、沙箱写策略、两 CLI 格式一致性、折算规则）。
+- 2026-09-10
+  变更摘要：新增客户端 Agent 云端化可行性分析（本地终端模式 → 手机号登录多租户 Web 模式）。
+  涉及文件/模块：`docs/client-agent-web-remoting.md`（新增）。
+  关键逻辑/决策：盘点本地模式五类依赖（文件/凭证/会话/skill 安装/终端交互）；结论是 CLI 内核约 70% 可平移（通道/清单/声明式 skill/JSON 输出），但多租户 SaaS 设施（登录/沙箱隔离/文件代理/前端/审计）需从零建且为工作量大头，粗估 4-6 人月；列出 14 项问题（高风险 5：token 金库、租户隔离、授权合规、确认真实性、文件生命周期）；推荐三阶段演进——先走 B' 链路+平台 worker，再用飞书做交互壳跳过自建前端与手机号登录，最后独立 Web 端；提出关键疑问：目标用户若无飞书账号手机号登录才有必要。
+- 2026-09-10
+  变更摘要：新增交付平台设计文档，覆盖基础建设/Skill 生成平台/Skill 归档评分 CI-CD 发布三大交付物，含 MCP 发布专项建议。
+  涉及文件/模块：`docs/delivery-platform-design.md`（新增）。
+  关键逻辑/决策：定义 skill.yaml 包格式（deps 为生产开白依据、自动插入人工确认节点、PII 声明、写接口不自动重试）；设计 registry 状态机与四维评分门禁（静态 30/试跑 30/安全 25/运行时 15）；CI 七步流水线（schema→静态→清单核对→沙箱试跑→安全扫描→评分→产物）；发布多端走 MR 机制（contract-cli skills/ + embed + 现有 release-beta.sh 升级）；MCP 建议以 web-api-catalog 为 SSOT、skill 发布自动派生 MCP tools、读类直接暴露/写类默认由 skill 承接、复用开平治理与 resource_metadata 发现规范；给出 M1–M5 里程碑与 5 项待确认（everyline 关系、MCP 维护方式、沙箱写策略、评分阈值、运行时载体）。
+- 2026-09-09
+  变更摘要：技术架构总览补充「CLI 定位澄清」与「安全设计」两个章节，并同步飞书。
+  涉及文件/模块：`docs/web-api-exposure-architecture.md`、飞书《技术架构总览》。
+  关键逻辑/决策：明确定位转变——CLI 不再承载业务命令（结构化命令冻结只维护），只提供标准 HTTP 调用通道 + 接口清单，业务闭环完全由 skill 承接（编排/参数映射/状态/确认节点）；安全设计覆盖四层：令牌（scope 收敛、Agent 短时 token）、开平（userTokenPaths/userId 强制非空/限流/ID转换）、Web 接口层（写操作确认、幂等、PII、IDOR）、治理（灰度只读→低危写→高危写、白名单回收、清单 diff 告警）；列出 4 项安全待确认（UserID 强制性、网络路径、PII 清单、Agent token 生命周期）。
+- 2026-09-09
+  变更摘要：技术架构总览补充部署架构章节，推荐 B 通道走 open-platform 复用限流与敏感信息 ID 转换能力。
+  涉及文件/模块：`docs/web-api-exposure-architecture.md`（更新 1.4 节）、飞书《技术架构总览》同步。
+  关键逻辑/决策：基于代码证据确认 open-platform 已有 RateLimiterGatewayFilterFactory（Nacos 动态限流）与 RewriteUserId/DeptId 过滤器（user_id/dept_id 内外 ID 转换）；对比 B'（open-gateway→open-platform→clm-api，推荐）与 B（直连 common-gateway，fallback）两条路线，采纳 B' 理由：限流/ID 转换是 Agent 硬需求、生产白名单复用 ACL、CLI 单出口改动最小、A/B 统一网关治理；分发设计相应简化为同网关前缀区分。
+- 2026-09-09
+  变更摘要：新增技术架构与业务流程方案文档（评审用），含现状/变动架构 mermaid 图、产品使用流程图、按模块接口附表。
+  涉及文件/模块：`docs/web-api-exposure-architecture.md`（新增）。
+  关键逻辑/决策：架构图区分「现状 CLI→open-apis 单通道」与「改造后双通道 + Agent 平台」；业务流程按内部验证/产品生成 skill/用户执行 skill/生产名单控制四个 sequence/flowchart 表达；接口附表基于 doc001 清单按模块汇总（contract 1203 / office 33 / _custom 26 / retrieval 12 / dreamcar 10 / 散落 32 / systemConfig 1，共 1316），方法分布 POST 589/GET 576/PUT 86/DELETE 47/其他 18，未识别 12 待 S1.1 补齐。
+- 2026-09-09
+  变更摘要：新增前端 API 静态解析脚本，完成 S1 接口清单与接口文档的初版生成。
+  涉及文件/模块：`tools/gen_web_api_catalog.py`（新增）。
+  关键逻辑/决策：扫描 clm-monorepo-fe 的 `features/common/src/api/**`（函数级高精度，free-swagger 格式）+ `apps/*/src`、`features/pc/src`（行级兜底），提取 url/method/params/data/返回泛型/注释，按 path+method 去重，输出机器清单 JSON 与人读 Markdown。实测去重后 1316 个接口（common 共享层 1288 + apps 自有 clm 19/admin 9），counterparty/clm-h5 无自有接口复用 common。已知不足：12 个 method 未识别（上传/下载/preload 边缘）、61 个 path 含模板变量待解析常量。
+- 2026-09-09
+  变更摘要：Web 接口暴露方案 v2 修订，吸收评审结论（common-gateway 纯转发、1400+ 全量+文档同步、生产按 skill 依赖动态开白、清单覆盖 apps/* 全部、命令命名暂不设计）。
+  涉及文件/模块：`docs/web-api-exposure-design.md`（更新为 v2）。
+  关键逻辑/决策：在 v1 基础上新增「生产白名单 + skill 发布联动」章节（`WebPathAllowlist`/`WebAllowAll`，skill deps 驱动 GitOps 开白）；接口清单从 apps/clm 扩为 apps/* 全部并同步生成人读文档；common-gateway 校验项降级为无需考虑；命令命名改为 TBD。未改动任何代码。
+
+- 2026-09-09
+  变更摘要：新增 Web 接口暴露方案设计文档，梳理开平与 Web 两条请求链路并给出 CLI 改造方案。
+  涉及文件/模块：`docs/web-api-exposure-design.md`（新增）、`docs/skill-capability-schemes.md`（前序方案对比）。
+  关键逻辑/决策：实测确认 user OAuth token 以 `Authorization: Bearer` 可直连 `contract.qfei.cn/clm/api/**`，含真实业务读接口 `POST /clm/api/es/search/contractList`；`tenant_id` 非强制，租户取自 `data.employee.tenantId`。方案定为传输层引入 Channel（`open_platform`/`web`）解耦 `buildURL` 对 `/open-apis/` 的硬编码、Profile 增加 `WebBaseURL` 并同步放行 `prod_environment.go` 的生产 origin 校验、新增 `web call` 通用命令（强制 user 身份 + 路径白名单）、按 path 前缀在 `openPlatformClientAndContext` 单点分发；接口清单从前端 `features/common/src/api/**` 静态提取（约 1400+ 条）作为 skill 工具注册表来源。未改动任何代码。
+
 - 2026-09-02
   变更摘要：为 CLI 的所有 OpenPlatform 业务请求增加请求级 Trace 关联。
   涉及文件/模块：`internal/tracecontext`、`internal/openplatform` 统一客户端、README、命令参考与测试计划。

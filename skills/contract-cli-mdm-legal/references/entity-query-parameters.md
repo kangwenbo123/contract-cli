@@ -75,6 +75,8 @@ mdm legal get
 
 ## 4. 使用建议
 
+- 2026-09-20 当前生产 user 授权已实测 `list --name` 返回一个已知主体且 `has_more=false`，同一 ID 的 `get` 也业务成功；名称和 ID 与已知合同我方主体对应。这证明该身份可查列表/详情，不等于合同搜索已支持通用我方 ID 精确筛选。
+- 本次 user 列表结构为 `data.items[].id/legal_entity_text/legal_entity`，分页 `data.has_more/page_token`；详情包在 `data.legalEntity`。按实际响应读取，保留主体 ID 原字符串，不用 `legal_entity` 编码代替 ID，也不把交易方列表的 camelCase 结构照搬到此处。
 - 先 `list` 拿候选，再 `get` 看详情，是最稳的两步走方式
 - 已知法人实体编码但没有 id 时，用 `mdm legal get --code`
 - 如果只是为合同选择我方主体，优先记住法人实体 id

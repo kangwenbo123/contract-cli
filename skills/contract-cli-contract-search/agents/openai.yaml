@@ -1,0 +1,7 @@
+interface:
+  display_name: "智书合同 CLI · 合同搜索"
+  short_description: "搜索和筛选合同，支持关键词、文本、日期、人员、部门、交易方及自定义字段"
+  default_prompt: "使用 $contract-cli-contract-search 按自然语言条件查找或筛选合同：先确认 user/app 身份；显式关键词意图和未识别出实体或字段线索的普通搜索词使用页面默认“全部”关键词。用户明确指定业务角色时先查询候选（人员、部门、交易方或我方主体）；推测是这些对象或自定义字段但含义不完整时，先查候选或字段元数据再用业务语言引导确认。名称、编号、合同文本、日期和状态等明确字段按指定字段查询，并完整分页核对合同组与合同条目。"
+
+policy:
+  allow_implicit_invocation: true

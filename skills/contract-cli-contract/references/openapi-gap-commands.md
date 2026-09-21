@@ -2,6 +2,8 @@
 
 这份文档覆盖新增的 app-only 合同开放平台补齐命令。开始前仍要先读共享 skill，确认 profile 已有 app token。
 
+合同搜索的身份选择、条件与分页统一见 [合同搜索 Skill](../../contract-cli-contract-search/SKILL.md)；本页仅保留 app V2 命令速查。
+
 ## 命令速查
 
 ```bash

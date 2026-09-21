@@ -111,7 +111,7 @@ Built-in skills:
 | 检查项 | 预期 |
 | --- | --- |
 | npm install | 成功，无 404、无 postinstall 失败 |
-| `npx skills add qfeius/contract-cli -y -g` | 成功安装 6 个已开放 skills，并输出对应 Agent 平台适配信息 |
+| `npx skills add qfeius/contract-cli -y -g` | 成功安装当前版本的已开放 skills（包含 contract-cli-contract-search），并输出对应 Agent 平台适配信息 |
 | `contract-cli --version` | 输出版本号、commit、build date |
 | `contract-cli skills list` | 输出 `auth`、`contract-cli-contract`、`contract-cli-mdm-vendor` 等内置 skill |
 
@@ -183,7 +183,7 @@ npx skills add qfeius/contract-cli -y -g
 预期结果：
 
 - 输出 `Installation complete`。
-- 输出 `Installed 6 skills`。
+- 输出安装成功及实际数量，并确认包含 `contract-cli-contract-search`；数量以本次发布清单为准。
 - 至少包含 `auth`、`contract-cli-contract`、`contract-cli-mdm-fields`、`contract-cli-mdm-legal`、`contract-cli-mdm-vendor`、`contract-cli-shared`。
 - 输出中能看到 `universal` 或 `symlinked` 的平台适配信息；具体平台列表以 installer 实际输出为准。
 
@@ -207,6 +207,7 @@ find "$SKILLS_TARGET" -maxdepth 2 -type f | sort
 ```text
 Installed skill: auth
 Installed skill: contract-cli-contract
+Installed skill: contract-cli-contract-search
 Installed skill: contract-cli-mdm-vendor
 Installed skill: contract-cli-mdm-legal
 Installed skill: contract-cli-mdm-fields
@@ -945,14 +946,47 @@ POST /open-apis/contract/v1/mcp/contracts/search
 回归点：
 
 - MCP 固定 query `user_id_type=user_id` 应保留。
-- 即使显式传 `--user-id-type employee_id`，MCP 固定参数也不应被覆盖。
+- 显式传 `--user-id-type employee_id`、`union_id` 或空值应本地报错，搜索 HTTP 次数为 0；省略及 `user_id` 正常执行，app 仍透传。
 - `--user-id` 这种 MCP 固定 query 不存在的通用参数可以被补充。
+- HTTP 200 下业务 code 非零、success=false 或缺失 code 时，user 搜索必须失败退出并保留 JSON/raw 响应；成功空结果仍正常退出。
+- 在 mock transport 截获并校验大整数、高精度小数、嵌套数组和科学计数原值；多文档、尾部垃圾和非对象输入应被拒绝。真实金额查询在修复前后结果集保持一致。
 
-建议额外执行：
+本地参数拒绝负例（预期报错，不发送搜索请求）：
 
 ```bash
 contract-cli contract search --profile "$PROFILE" --as user --input-file /tmp/contract-search-user.json --user-id "$USER_ID" --user-id-type employee_id --output json
 ```
+
+### 6.1.1 搜索字段发现
+
+本次开发版新增 `contract search-fields`，旧 CLI 1.8.6 不支持。使用当前已授权的配置和 user 身份验证，保持 `CONTRACT_CLI_CONFIG_DIR` 不变。
+
+```bash
+contract-cli contract search-fields --help
+contract-cli contract search-fields --keyword "项目区域" --profile "$PROFILE" --as user --output json
+```
+
+预期底层接口：
+
+```text
+GET /open-apis/contract/v1/mcp/contracts/search/filter_fields?keyword=<URL 编码后的字段展示名>
+```
+
+自动化回归点：
+
+- 本地帮助无 HTTP 调用，列出可选 `--keyword` 和 user-only 限制。
+- 关键词按原值进行 query 编码，覆盖中文、空格、`&`、`+` 等字符；只传 `keyword`，不注入 `user_id_type`、`lang` 或分页参数。
+- 省略 `--keyword` 时不发送该 query 参数；完整目录场景使用 mock 验证，实际全量查询需用户明确要求。
+- 省略 `--as` 时仍使用 user，显式 app 在发请求前失败；不接受请求体和未支持的语言、身份 ID 类型或分页参数。
+- 基础字段与自定义字段完整保留，尤其是 `request_location`、`request_paths`、`search_field`、`filter_unique_key`、`search_value_type`、`value_description`、`usage_hint`、`value_scopes` 和 `examples`；不把所有字段改写成 `filter_units`。
+- HTTP 200 下非零业务 `code` 或 `success=false` 仍返回失败退出码，并保留错误信息；成功空匹配与业务错误明确区分。
+
+获授权后的只读联调：
+
+- 使用租户真实展示名查询，核对字段 key、搜索路径和值类型；不以示例“项目区域”必然存在作为通过条件。
+- 从真实元数据中选择字段并构造搜索请求，检查选项/日期/数字/文本等类型约束；没有候选时不猜 key，不删原条件。
+- 固定申请人姓名和部门名称按主 Skill 场景 6、7 直接查；不以缺少人员/部门列表为失败条件。
+- 安装后的 `contract-cli-contract-search` Skill 能发现新命令，并保留主文件 9 个场景的三段结构。
 
 ### 6.2 合同详情
 
@@ -1440,10 +1474,10 @@ npx skills add qfeius/contract-cli -y -g
 预期结果：
 
 - 输出 `Installation complete`。
-- 输出 `Installed 6 skills`。
+- 输出安装成功及实际数量，并确认包含 `contract-cli-contract-search`；数量以本次发布清单为准。
 - 安装内容至少包含：
   - `auth`
-  - `contract-cli-api-call`
+  - `contract-cli-contract-search`
   - `contract-cli-contract`
   - `contract-cli-mdm-fields`
   - `contract-cli-mdm-legal`
@@ -1759,3 +1793,12 @@ Get-AuthenticodeSignature "<matched_process.executable>" | Format-List Status,St
 ```
 
 最后从真实客户端执行一条已授权的只读业务命令，在 Higress/OpenPlatform 接收端核对 17.3 的七个来源 Header 和两个 Trace Header；只运行 `environment inspect` 不能证明业务 Hook 已透传。
+
+## 人员与部门独立命令验收（2026-09-20）
+
+- 顶层 `employee list` / `department list`：中文与保留字符编码、部门单值映射、分页 token 原样传递；人员必须有条件，部门允许读取目录一页；默认 user、显式 app 拒绝。
+- page-size 1/200 成功，0/201/负数/小数/空值失败；名称与部门 ID 互斥，重复和空条件拒绝；不暴露 JSON body 或身份覆盖。
+- 响应保持 user_id/department_id 字符串、状态、未知大整数和分页字段；错误 code/success 返回失败，正常空列表成功。
+- mock 串联人员→需求人、部门→需求部门合同筛选；部署验证重名消歧、完整分页及保留原查询条件。
+- 日志不包含姓名、部门 ID、分页 token 或 token；网络/HTTP 失败的最终错误保留状态和 trace，避免完整 URL 与服务端正文泄露。
+- `skills list/install`、npm 包检查和本地安装应包含 `contract-cli-employee`、`contract-cli-department` 的主文件及 agents 元数据；搜索跨 Skill 引用可解析。

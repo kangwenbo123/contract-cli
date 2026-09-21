@@ -285,6 +285,8 @@ func (s *Store) SaveToken(profileName string, identity IdentityKind, token *Toke
 		profile.Identities.User.Token = token
 	case IdentityApp:
 		profile.Identities.App.Token = token
+	case legacyIdentityBot:
+		return fmt.Errorf("unsupported identity %q", identity)
 	default:
 		return fmt.Errorf("unsupported identity %q", identity)
 	}

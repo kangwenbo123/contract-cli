@@ -822,7 +822,11 @@ func (a *App) downloadAppOpenPlatformFile(ctx context.Context, options commandOp
 		return err
 	}
 	if closeOutput != nil {
-		defer closeOutput()
+		defer func() {
+			if closeOutput != nil {
+				_ = closeOutput()
+			}
+		}()
 	}
 
 	if _, err := client.DoStream(ctx, requestContext, openplatform.Request{
@@ -831,6 +835,13 @@ func (a *App) downloadAppOpenPlatformFile(ctx context.Context, options commandOp
 		IdentityPolicy: openplatform.IdentityPolicyAppOnly,
 	}, writer); err != nil {
 		return err
+	}
+	if closeOutput != nil {
+		closeErr := closeOutput()
+		closeOutput = nil
+		if closeErr != nil {
+			return fmt.Errorf("close download output file: %w", closeErr)
+		}
 	}
 	if !options.raw {
 		_, _ = fmt.Fprintf(a.stdout, "Downloaded file to %s\n", outputPath)

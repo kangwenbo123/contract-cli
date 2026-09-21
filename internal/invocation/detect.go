@@ -238,18 +238,6 @@ func normalizeCertificateSHA256(value string) string {
 	return strings.ToLower(replacer.Replace(strings.TrimSpace(value)))
 }
 
-func matchesProcessNameAtDepth(chain []Process, depth int, names []string) bool {
-	current := processAtDepth(chain, depth)
-	if current == nil {
-		return false
-	}
-	name := strings.TrimSpace(current.Name)
-	if name == "" {
-		name = filepath.Base(current.Executable)
-	}
-	return matchesString(name, names)
-}
-
 func matchingWindowsRule(current Process) *applicationRule {
 	executable := normalizeExecutable(current.Executable)
 	name := strings.TrimSpace(current.Name)

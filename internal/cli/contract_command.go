@@ -26,6 +26,8 @@ func (a *App) runContract(ctx context.Context, args []string) error {
 	switch args[0] {
 	case "search":
 		return a.runContractSearch(ctx, args[1:])
+	case "search-fields":
+		return a.runContractSearchFields(ctx, args[1:])
 	case "search-v2":
 		return a.runContractSearchV2(ctx, args[1:])
 	case "get":
@@ -79,7 +81,13 @@ func (a *App) runContract(ctx context.Context, args []string) error {
 	}
 }
 
-func (a *App) runContractSearch(ctx context.Context, args []string) error {
+func (a *App) runContractSearch(ctx context.Context, args []string) (err error) {
+	a.logger.Info("search contracts")
+	defer func() {
+		if err != nil {
+			a.logger.Error("search contracts failed", "error_type", fmt.Sprintf("%T", err))
+		}
+	}()
 	parsed, err := parseArgs(args, structuredValueFlags("--contract-number", "--page-size", "--page-token"), commonBoolFlags())
 	if err != nil {
 		return err
@@ -115,11 +123,18 @@ func (a *App) runContractSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	a.logger.Info("resolved contract search identity", "identity", requestContext.Identity)
+	if requestContext.Identity == config.IdentityUser && parsed.HasValue("--user-id-type") && strings.TrimSpace(options.userIDType) != "user_id" {
+		return fmt.Errorf("contract search with user identity requires --user-id-type user_id; omit the flag or use user_id to match the MCP contract")
+	}
 	response, err := contractsvc.NewService(client).Search(ctx, requestContext, contractsvc.SearchInput{
 		Body: body,
 	})
 	if err != nil {
 		return err
+	}
+	if requestContext.Identity == config.IdentityUser {
+		return a.renderContractMCPResponse(options, response)
 	}
 	return a.renderOpenPlatformResponse(options, response)
 }
@@ -814,7 +829,7 @@ func (a *App) runContractUploadFile(ctx context.Context, args []string) error {
 		a.logger.Error("open contract upload file failed", "profile", requestContext.Profile.Name, "identity", requestContext.Identity, "file_name", fileName, "file_type", fileType, "error", err.Error())
 		return fmt.Errorf("open upload file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() // Read-only upload source; request errors are handled below.
 
 	if requestContext.Identity == config.IdentityUser && (fileType == "reviewAttachment" || fileType == "approveAttachment") {
 		return a.runContractUploadAttachmentAsUser(ctx, contractsvc.NewService(client), requestContext, options, contractsvc.UploadFileInput{

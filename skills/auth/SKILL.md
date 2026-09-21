@@ -17,7 +17,7 @@ description: "contract-cli 登录与身份切换技能：初始化 profile、通
 ## 适用范围
 
 - 首次初始化本地 `profile`
-- 在豆包或 WorkBuddy 中以 Device Grant 完成手机号授权
+- 在豆包、WorkBuddy 或 Codex 中以 Device Grant 完成手机号授权，并复用当前凭证范围内的登录态
 - 保留 `user` 身份的 OAuth 授权码 + PKCE 登录
 - 以 `app` 身份录入 `app_id/app_secret`
 - 查看或清理本地身份状态
@@ -65,7 +65,7 @@ contract-cli config add --env prod --name contract
 `user` 身份有两种互不迁移的模式：
 
 - `auth login --as user`：保留的 Authorization Code + PKCE 模式，token 继续使用旧 profile 存储。
-- `auth init` + `auth complete`：豆包/WorkBuddy 使用的 Device Grant 模式，token 只进入 CredentialStore，不写入 profile。
+- `auth init` + `auth complete`：豆包/WorkBuddy/Codex 使用的 Device Grant 模式，token 只进入 CredentialStore，不写入 profile。CLI 根据执行环境选择本地共享或任务隔离的凭证范围。
 
 Device Grant 一次授权同时包含合同与智审平台访问范围；本 Skill 只负责授权，不提供智审业务命令或智审业务操作说明。
 
@@ -77,12 +77,14 @@ Device Grant 一次授权同时包含合同与智审平台访问范围；本 Ski
 
 ## 快速流程
 
-### 豆包 / WorkBuddy Device 授权
+### 豆包 / WorkBuddy / Codex Device 授权
 
 ```bash
 contract-cli config add --env prod --name contract
+contract-cli auth status --profile contract --as user
+# 已有有效授权时直接执行业务命令；需要新授权或恢复 Device 会话时：
 contract-cli auth init --profile contract --output json
-# 按当前 Agent 的展示契约呈现授权信息，等用户完成手机号、企业确认和同意授权
+# 仅 status=pending 时展示授权信息；等用户完成手机号、企业确认和同意授权后：
 contract-cli auth complete --profile contract --output json
 ```
 
@@ -94,7 +96,9 @@ contract-cli contract get <contract-id> --profile contract --output json
 
 固定规则：
 
-- `auth init` 只发起一次请求并立即退出。WorkBuddy 与豆包 AgentKit 的最终回复必须同时包含完整 HTTPS 授权链接、二维码和过期时间；豆包普通工作任务只展示授权链接和过期时间。完成下述展示后必须立即结束当前轮次。
+- 新任务先执行 `auth status --profile contract --as user`；已有有效 Device 授权时直接继续业务请求，不因任务变化重新授权。`auth status` 不会刷新 Token；过期且可刷新的共享 Device 凭证可交给 `auth init` 处理。
+- `auth init` 返回 `status=authorized` 表示已复用有效或成功刷新的 Device 凭证，直接继续原业务请求；不得展示不存在的授权链接或二维码，也不执行 `auth complete`。
+- 以下授权展示和立即结束轮次的规则仅适用于 `auth init` 返回 `status=pending`。需要新授权时，`auth init` 发起一次请求并立即退出。WorkBuddy 与豆包 AgentKit 的最终回复必须同时包含完整 HTTPS 授权链接、二维码和过期时间；豆包普通工作任务只展示授权链接和过期时间。完成下述展示后必须立即结束当前轮次。
 - 将 `verification_uri_complete` 替换到 Markdown `[打开授权页面](<verification_uri_complete>)` 中，确保最终回复正文有可点击链接；不得只把 URL 留在工具输出或思考过程中。
 - WorkBuddy 的 `auth init` 返回 `pending` 后，只使用 `qr_code_path` 调用一次 `present_files(files: ["<qr_code_path>"])`，将 CLI 生成的原始 PNG 作为二维码图片附件/产物卡片交付。
 - WorkBuddy 主路径只调用一次 `present_files`，不得调用其他图片处理或展示工具。禁止读取、复制或重新编码 `qr_code_data_uri`，也不得自行重新生成二维码。
@@ -121,7 +125,7 @@ contract-cli contract get <contract-id> --profile contract --output json
   ```
 
   必须直接使用 CLI 返回的 `expires_at_display`，不得展示 `expires_at` 的 RFC3339 原值。返回授权链接和过期时间后立即结束当前轮次，不再调用任何授权展示、代码执行、图片处理或业务工具。
-- WorkBuddy 和豆包 AgentKit 在 `auth init` 返回后只能调用一次授权展示工具；工具失败也不得改用其他展示工具或重试。豆包普通工作任务不得调用授权展示工具。除此之外，禁止执行 `auth complete`、再次执行 `auth init`、业务命令、轮询或网络重试。
+- WorkBuddy 和豆包 AgentKit 在 `auth init` 返回 `status=pending` 后只能调用一次授权展示工具；工具失败也不得改用其他展示工具或重试。豆包普通工作任务不得调用授权展示工具。除此之外，禁止执行 `auth complete`、再次执行 `auth init`、业务命令、轮询或网络重试。
 - CLI 内部的单次安全重试不算第二次 `auth init` 命令；该重试只允许发生在明确的 TCP `dial` 失败、能够确认请求尚未发出时。
 - `auth init` 最终失败后，禁止额外执行 `curl`、`auth status` 或其他探测命令；如实告知失败原因并明确询问用户是否重新发起授权。
 - 链接已包含一次性用户码，不要再要求用户手工输入授权码。
@@ -131,11 +135,15 @@ contract-cli contract get <contract-id> --profile contract --output json
 - `denied` / `expired` / `restart_required` 为终态；先询问用户是否重新授权。只有收到新的用户消息明确同意后，才执行 `auth init --profile <profile> --output json --restart`，随后再次立即结束当前轮次。
 - `auth status` 不支持 `--output`，禁止自动附加该参数。
 - Refresh Token 返回 `invalid_grant` 时也必须先询问用户；CLI 会清理失效 Token，但会保留可能存在的 pending 会话。只有收到新的用户消息明确同意后，才先执行 `auth status --profile <profile> --as user`，再根据真实状态选择复用现有会话、普通 `auth init` 或带 `--restart` 的 `auth init`；不要直接重复未确认结果的写请求。
+- CLI 确认当前进程来自本地桌面客户端时，豆包、WorkBuddy、Codex 的 Device 凭证按当前系统用户 + profile 保存，不绑定任务 ID，可跨任务复用。当前自动识别的本地共享范围覆盖 macOS 和 Windows，分别使用 macOS Keychain 和 Credential Manager；系统安全存储不可用时直接失败，不降级成明文文件。Linux 暂保留任务隔离，WorkBuddy 使用 Secret Service。
+- `auth init` / `auth complete` 的 `credential_scope` 为 `user` 表示本地跨任务共享，为 `task` 表示任务隔离；`auth status` 显示同义的 `Credential Scope`，应以 CLI 结果为准。
+- 云端、沙箱或识别不明确时保持任务隔离；不能仅凭 `SESSION_ID` 或操作系统类型判断为本地。不得为了共享凭证修改环境标记或伪造客户端信息。
 - 豆包 AgentKit / Skills Sandbox 运行在云端 Skill 环境，必须提供 `SKILL_SESSION_WORKSPACE` 和格式正确的 `CONTRACT_CLI_CREDENTIAL_KEY_V1`。
-- 豆包普通工作任务使用 `SESSION_ID` 做任务级隔离；所有 CLI 命令必须从任务初始工作目录执行，不得在授权前后切换到其他目录。凭证以 AES-256-GCM 密文保存到当前任务目录，只在同一任务内复用，新建任务必须重新授权。
+- 豆包普通工作任务在隔离范围内使用 `SESSION_ID`；所有 CLI 命令必须从任务初始工作目录执行，不得在授权前后切换到其他目录。凭证以 AES-256-GCM 密文保存到当前任务目录，仅在该任务内复用；缺少任务隔离所需信息时直接失败。
+- 不自动迁移旧任务凭证。升级后首次进入本地共享范围可能需要重新授权，后续任务复用共享登录态；旧 Authorization Code 模式仍保留，不与 Device 凭证自动互迁。
 - `auth init` 成功后，CLI 会把 Device 运行所需的非敏感 profile 快照与 pending transaction 一起加密保存。AgentKit 同一会话工作区或豆包普通工作任务的任务目录仍存在、但临时 HOME 中没有本地 profile 时，CLI 只会在命令显式携带 `--profile contract` 且快照完整匹配时恢复 profile。
 - 恢复只写入当前沙箱临时 HOME；不会把 `config.json`、`secrets.json`、App Secret 或明文 profile 写进会话工作区。快照缺失或损坏时，按错误提示重新执行 `config add` 和 `auth init`，禁止猜测环境、scope、client 或 endpoint。
-- WorkBuddy 运行在客户本机，必须提供 `CODEBUDDY_SESSION_ID`；macOS 使用 macOS Keychain，Windows 使用 Credential Manager，Linux 使用 Secret Service。任一条件缺失都直接失败，不降级成明文文件。
+- WorkBuddy 未被确认为本地桌面执行时，仍以 `CODEBUDDY_SESSION_ID` 隔离凭证；缺少任务 ID 时直接失败，不跨任务读取其他凭证。
 
 ### `user` 登录
 
@@ -213,6 +221,7 @@ contract-cli auth logout --as app
 
 - Authorization Code 模式的 `logout --as user` 只清理 `user.token`
 - Device 模式的 `logout --as user` 先撤销 Refresh Token family，成功后再清理 CredentialStore；撤销失败时保留本地凭据并明确报错
+- 本地共享 Device 凭证退出后，同一 profile 的所有本地任务都会失去该登录态；任务隔离范围内的退出仅清理当前任务凭证
 - `logout --as app` 只清理 `app.token`，保留 `app_id/app_secret` 和对应 secret
 - 不传 `--as` 时，`auth logout` 默认处理 `user`
 
@@ -241,9 +250,9 @@ contract-cli auth use --as app
 存储约束：
 
 - `config.json` 保存 profile、identity 元数据；旧授权码模式仍保持原有 token 存储行为
-- Device Token 不写入 `config.json`：AgentKit 写入会话工作区的 AES-256-GCM 密文，豆包普通工作任务写入任务目录的 AES-256-GCM 密文，WorkBuddy 写入操作系统安全存储
+- Device Token 不写入 `config.json`：已确认本地桌面执行时写入操作系统安全存储，按当前系统用户 + profile 共享；任务隔离范围内，AgentKit 写入会话工作区的 AES-256-GCM 密文，豆包普通工作任务写入任务目录的 AES-256-GCM 密文，WorkBuddy 的系统安全存储凭证绑定任务 ID
 - 豆包加密 Device 凭证可包含恢复当前 Device profile 所需的非敏感快照；不包含 App 身份、旧 OAuth Token、手机号、企业 ID 或业务参数
-- 豆包普通工作任务没有平台 CredentialStore；任务级加密用于避免明文落盘和正常对话泄露，但不能抵御同一沙箱内具有文件和进程访问能力的 Shell，禁止宣称存在进程级 Secret 隔离
+- 豆包普通工作任务在任务隔离范围内使用任务级加密，用于避免明文落盘和正常对话泄露，但不能抵御同一沙箱内具有文件和进程访问能力的 Shell，禁止宣称存在进程级 Secret 隔离
 - `secrets.json` 只保存 app 的 `app_secret`
 - `user.token` 与 `app.token` 分离存储，不共享
 - 旧版平铺 OAuth 字段会自动迁移到 `identities.user`
@@ -264,5 +273,5 @@ contract-cli auth use --as app
 - app 凭据不完整：补齐 `--app-id/--app-secret` 或设置 `CONTRACT_CLI_APP_ID/CONTRACT_CLI_APP_SECRET`
 - app 登录提示缺少 `app_token_endpoint`：说明 profile 过旧，重跑 `contract-cli config add --env prod --name <profile>`
 - app 状态显示 `expired`：重新执行 `contract-cli auth login --as app`
-- user 状态显示 `expired`：重新执行 `contract-cli auth login --as user`
+- user 状态显示 `expired`：共享 Device 模式按上文执行 `auth init`，由 CLI 尝试刷新；任务隔离 Device 模式按真实授权会话状态处理，旧 Authorization Code 模式才执行 `contract-cli auth login --as user`
 - 旧脚本仍传 `--as bot`：可以继续执行；后续新脚本请改写为 `--as app`

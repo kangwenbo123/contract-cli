@@ -88,9 +88,11 @@ contract-cli config add --env prod --name contract
 # 2. 本地环境可继续使用旧 user 授权码模式
 contract-cli auth login --profile contract --as user
 
-# 3. 豆包 / WorkBuddy 使用 Device Grant：init 立即返回授权信息
+# 3. 豆包 / WorkBuddy / Codex 使用 Device Grant，先检查可复用的授权
+contract-cli auth status --profile contract --as user
+# 无有效授权时执行 init；status=authorized 可直接继续业务请求
 contract-cli auth init --profile contract --output json
-# 用户完成手机号和企业授权后，只查询一次
+# 仅 status=pending 时展示授权信息；用户完成手机号和企业授权后，只查询一次
 contract-cli auth complete --profile contract --output json
 
 # 4. 或登录 app 身份
@@ -143,17 +145,21 @@ contract-cli config add --env prod --name contract
 **Step 4：登录并验证**
 
 ```bash
+contract-cli auth status --profile contract --as user
+# 已有有效 Device 授权时直接继续业务请求；否则：
 contract-cli auth init --profile contract --output json
-# Agent 展示授权信息，用户明确完成授权后：
+# 仅 status=pending 时展示授权信息，用户明确完成授权后：
 contract-cli auth complete --profile contract --output json
 contract-cli auth status --profile contract --as user
 ```
 
-WorkBuddy 使用 `qr_code_path` 交付原始 PNG 附件，AgentKit 使用 `qr_code_path`。豆包普通工作任务只展示 `verification_uri_complete` 和 `expires_at_display`，不展示二维码，也不读取或交付二维码文件。
+`auth init` 返回 `status=authorized` 时，表示已复用有效或成功刷新的共享 Device 凭证，直接继续业务请求，不展示不存在的授权链接或二维码、不执行 `auth complete`。仅 `status=pending` 需要展示：WorkBuddy 使用 `qr_code_path` 交付原始 PNG 附件，AgentKit 使用 `qr_code_path`。豆包普通工作任务只展示 `verification_uri_complete` 和 `expires_at_display`，不展示二维码，也不读取或交付二维码文件。
+
+CLI 确认当前进程来自本地桌面客户端时，豆包、WorkBuddy、Codex 按当前系统用户 + profile 使用系统安全存储，Device 登录态可跨任务复用；macOS 使用 Keychain，Windows 使用 Credential Manager，Linux 使用 Secret Service。云端、沙箱或识别不明确时保持任务隔离，不能仅凭操作系统类型或 `SESSION_ID` 开启共享。不自动迁移旧任务凭证，升级后首次可能需要重新授权；本地共享模式退出登录后，同一 profile 的所有本地任务都会失去该登录态。
 
 正式包固定使用 `contract` profile 和 `prod` 环境，不会使用历史非生产 profile 发起授权或业务请求。更新 Skills 后必须完全退出并重新启动，然后新建任务；已有任务不会热加载新 Skill。
 
-`auth init` 和 `auth complete` 都只请求一次。`complete` 返回 `pending` 时不持续轮询；请用户完成授权后再主动查询。返回 `uncertain`、`denied`、`expired` 或 `restart_required` 时禁止自动重试；用户明确同意重新授权后，才执行 `auth init --profile contract --output json --restart`。
+需要新授权时，`auth init` 只发起一次请求；复用有效共享凭证时不创建新授权。`auth complete` 只查询一次，返回 `pending` 时不持续轮询；请用户完成授权后再主动查询。返回 `uncertain`、`denied`、`expired` 或 `restart_required` 时禁止自动重试；用户明确同意重新授权后，才执行 `auth init --profile contract --output json --restart`。
 
 如用户提供应用凭证，也可以配置 app 身份：
 
@@ -175,8 +181,11 @@ contract-cli mdm fields list --profile contract --as user --biz-line vendor
 | Skill | Description |
 | --- | --- |
 | `auth` | 初始化 profile、user/app 登录、状态查看、登出、身份切换和本地配置排障 |
-| `contract-cli-shared` | 在 contract、payment、mdm、event 和 rule 模块间做选择，说明身份边界、请求体输入、输出格式和 profile 规则 |
-| `contract-cli-contract` | 合同详情、搜索、创建、字段、签署、授权、电子签、提交、更新、文件、分享、协商和审批命令 |
+| `contract-cli-shared` | 在 contract、employee、department、payment、mdm、event 和 rule 模块间做选择，说明身份边界、请求体输入、输出格式和 profile 规则 |
+| `contract-cli-employee` | 顶层 employee list，按姓名或部门查询人员、user_id 和状态 |
+| `contract-cli-department` | 顶层 department list，查询部门候选、department_id 和层级 |
+| `contract-cli-contract-search` | 合同搜索与筛选、搜索字段元数据、正文/附件文本关键词、user/app 接口选择、条件组合和分页 |
+| `contract-cli-contract` | 合同详情、创建、字段、签署、授权、电子签、提交、更新、文件、分享、协商和审批命令 |
 | `contract-cli-payment` | 付款申请、付款计划和付款记录命令 |
 | `contract-cli-mdm-vendor` | 交易方列表、详情、创建、更新、全量分页和按证件查询 |
 | `contract-cli-mdm-legal` | 法人主体列表、详情、按编码查询、创建和更新 |
@@ -203,12 +212,12 @@ contract-cli skills install --target ~/.codex/skills
 | Command | Description |
 | --- | --- |
 | `config add` | 初始化或更新 profile，写入开放平台地址、OAuth metadata 和 app token endpoint |
-| `auth init` | 发起或恢复 Device Grant；`--restart` 仅在用户明确同意后替换旧授权会话 |
+| `auth init` | 优先复用当前范围内有效或可刷新的共享 Device 凭证，否则发起或恢复 Device Grant；`--restart` 仅在用户明确同意后替换旧授权会话 |
 | `auth complete` | 单次查询 Device 授权结果，成功后安全保存 token |
 | `auth login --as user` | 走 OAuth 用户授权 |
 | `auth login --as app` | 使用 `appId + appSecret` 兑换 app token |
 | `auth status` | 查看 user 或 app 授权状态 |
-| `auth logout` | 清理指定身份 token；app 登出只清 token，不删除 appId/appSecret |
+| `auth logout` | 清理指定身份 token；本地共享 Device 登出对同一 profile 的所有本地任务生效；app 登出只清 token，不删除 appId/appSecret |
 | `auth use` | 切换 profile 的默认业务身份 |
 
 常用命令：
@@ -232,7 +241,7 @@ contract-cli auth logout --profile contract --as app
 - `contract ...`、`mdm ...` 结构化命令会根据 `--as user|app` 选择对应底层路径。
 - 当前大部分 MCP 路径仍是 user-only；显式用 app 调用 user-only 路径会直接报错。
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 app 身份。
-- `contract download-file`、`contract approval get` 支持 user/app；`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 user。
+- `contract download-file`、`contract approval get` 支持 user/app；`contract search-fields`、`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 user。
 - 兼容旧身份值 `bot`，但新文档和新脚本统一使用 `app`。
 
 ## Command System
@@ -259,6 +268,7 @@ contract-cli update check --channel latest --json
 
 ```bash
 contract-cli contract search --profile contract --as user --input-file search.json
+contract-cli contract search-fields --keyword "项目区域" --profile contract --as user --output json
 contract-cli contract search --profile contract --as app --data '{"contract_number":"CN-001"}'
 contract-cli contract get <contract-id> --profile contract --as user
 contract-cli contract create --profile contract --as app --data '{"contract_name":"demo","create_user_id":"ou_xxx"}'
@@ -266,6 +276,8 @@ contract-cli contract upload-file --profile contract --as user --file ./合同�
 contract-cli contract submit <contract-id> --profile contract --as app --data '{"comment":"ok"}'
 contract-cli contract template list --profile contract --as app --category-number CAT-1 --page-size 20
 ```
+
+`contract search-fields` 是本次开发版新增的 user-only 命令，对应 MCP `list-contract-search-filter-fields`；旧 CLI 1.8.6 不支持。按字段展示名传 `--keyword`，再按返回的请求路径、字段 key、值类型和候选构造 `contract search` 请求；仅用户明确要求完整字段清单时省略关键词。详见[搜索字段发现](skills/contract-cli-contract-search/references/search-filter-fields.md)。人员与部门候选查询已通过顶层 `employee list`、`department list` 和两个独立 Skill 提供；现有简单姓名/部门名称关键词搜索仍可直接使用，需要 ID 的筛选先查询候选并消歧。
 
 ### 3. MDM 主数据命令
 

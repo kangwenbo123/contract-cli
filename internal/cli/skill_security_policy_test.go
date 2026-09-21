@@ -30,7 +30,8 @@ func TestContractSkillsEnforceCredentialAndInvocationBoundaries(t *testing.T) {
 		"App Secret",
 		"device code",
 		"密码",
-		"只允许按现有 Device Grant 执行 `auth init`",
+		"优先复用当前凭证范围内已有的有效 Device 授权",
+		"需要新授权时，按现有 Device Grant 执行 `auth init`",
 		"明确提示联系管理员",
 		"不得索要其他 Token",
 		"不复述、不写入命令、不继续调用",
@@ -88,6 +89,9 @@ func TestBusinessSkillsContinueToLoadSharedSecurityPolicy(t *testing.T) {
 	root := filepath.Join("..", "..", "skills")
 	for _, skill := range []string{
 		"contract-cli-contract",
+		"contract-cli-contract-search",
+		"contract-cli-employee",
+		"contract-cli-department",
 		"contract-cli-event",
 		"contract-cli-mdm-exchange",
 		"contract-cli-mdm-fields",

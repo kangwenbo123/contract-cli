@@ -86,6 +86,8 @@ env \
 
 test -f "$CODEX_SKILLS_DIR/auth/SKILL.md"
 test -f "$CODEX_SKILLS_DIR/contract-cli-contract/SKILL.md"
+test -f "$CODEX_SKILLS_DIR/contract-cli-employee/SKILL.md"
+test -f "$CODEX_SKILLS_DIR/contract-cli-department/SKILL.md"
 test -f "$CODEX_SKILLS_DIR/contract-cli-contract/references/create-contract-fields.md"
 
 echo "local npm install ok: $PACKAGE_FILE"

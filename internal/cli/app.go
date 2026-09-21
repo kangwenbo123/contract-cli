@@ -38,6 +38,8 @@ type Options struct {
 	LookupEnv          func(string) (string, bool)
 	SkillsFS           fs.FS
 	CredentialStore    credential.Store
+	CredentialKeyring  credential.Keyring
+	LocalUserHome      func() (string, error)
 	InspectEnvironment func(context.Context, int) invocation.Result
 
 	UpdateRegistryURL    string
@@ -57,6 +59,10 @@ type App struct {
 	lookupEnv          func(string) (string, bool)
 	skillsFS           fs.FS
 	credentialStore    credential.Store
+	credentialKeyring  credential.Keyring
+	localUserHome      func() (string, error)
+	runtimeEvidence    *invocation.Result
+	commandContext     context.Context
 	inspectEnvironment func(context.Context, int) invocation.Result
 	updateURL          string
 	updateVersion      string
@@ -140,6 +146,10 @@ func New(options Options) *App {
 	if inspectEnvironment == nil {
 		inspectEnvironment = invocation.Inspect
 	}
+	localUserHome := options.LocalUserHome
+	if localUserHome == nil {
+		localUserHome = currentOSUserHome
+	}
 
 	app := &App{
 		stdout:             stdout,
@@ -153,6 +163,8 @@ func New(options Options) *App {
 		lookupEnv:          lookupEnv,
 		skillsFS:           skillsFS,
 		credentialStore:    options.CredentialStore,
+		credentialKeyring:  options.CredentialKeyring,
+		localUserHome:      localUserHome,
 		inspectEnvironment: inspectEnvironment,
 		updateURL:          options.UpdateRegistryURL,
 		updateVersion:      options.UpdateCurrentVersion,
@@ -178,6 +190,8 @@ func New(options Options) *App {
 
 func (a *App) Run(ctx context.Context, args []string) error {
 	a.updateNotice = nil
+	a.commandContext = ctx
+	a.runtimeEvidence = nil
 	if len(args) == 0 {
 		a.printUsage()
 		return nil
@@ -221,6 +235,8 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return a.runAPI(ctx, args[1:])
 	case "contract":
 		return a.runContract(ctx, args[1:])
+	case "employee", "department":
+		return a.runDirectory(ctx, args[0], args[1:])
 	case "payment":
 		return a.runPayment(ctx, args[1:])
 	case "mdm":

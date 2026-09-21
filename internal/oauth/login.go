@@ -122,7 +122,7 @@ func ExchangeAuthorizationCode(ctx context.Context, client *http.Client, logger 
 	if err != nil {
 		return nil, fmt.Errorf("perform token request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Transport/status/decode errors determine the request result.
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
@@ -184,7 +184,7 @@ func ExchangeTenantAccessToken(ctx context.Context, client *http.Client, logger 
 		}
 		return nil, fmt.Errorf("perform tenant access token request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() // Transport/status/decode errors determine the request result.
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))

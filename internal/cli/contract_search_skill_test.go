@@ -6,10 +6,109 @@ import (
 	"testing"
 )
 
+func TestContractSearchSkillMetadataRoutesSearchIntents(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join("..", "..", "skills", "contract-cli-contract-search")
+	metadata := readTextFile(t, filepath.Join(root, "agents", "openai.yaml"))
+	skill := readTextFile(t, filepath.Join(root, "SKILL.md"))
+	frontmatterParts := strings.SplitN(skill, "---", 3)
+	if len(frontmatterParts) != 3 {
+		t.Fatal("contract search skill must contain YAML frontmatter")
+	}
+	discoveryDescription := frontmatterParts[1]
+
+	for _, fragment := range []string{
+		"搜索和筛选合同",
+		"人员、部门、交易方",
+		"自定义字段",
+		"$contract-cli-contract-search",
+		"user/app",
+		"查询候选",
+		"字段元数据",
+		"完整分页",
+		"allow_implicit_invocation: true",
+	} {
+		if !strings.Contains(metadata, fragment) {
+			t.Errorf("contract search agent metadata missing discovery route %q", fragment)
+		}
+	}
+
+	for _, fragment := range []string{
+		"查合同",
+		"合同文本包含某词",
+		"按日期或状态筛选",
+		"申请或需求",
+		"部门",
+		"交易方",
+		"我方主体",
+		"自定义字段",
+	} {
+		if !strings.Contains(discoveryDescription, fragment) {
+			t.Errorf("contract search skill discovery description missing search intent %q", fragment)
+		}
+	}
+
+	if strings.Contains(metadata, "有歧义时用业务字段和值向我澄清") {
+		t.Errorf("contract search metadata must not encourage clarification before agent-side candidate and field discovery")
+	}
+}
+
+func TestContractSearchSkillKeepsGuidanceWithoutStealingDefaultKeywords(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join("..", "..", "skills", "contract-cli-contract-search")
+	metadata := readTextFile(t, filepath.Join(root, "agents", "openai.yaml"))
+	skill := readTextFile(t, filepath.Join(root, "SKILL.md"))
+	guided := readTextFile(t, filepath.Join(root, "references", "guided-search.md"))
+	allKeywords := readTextFile(t, filepath.Join(root, "references", "all-keyword-search.md"))
+
+	for name, content := range map[string]string{
+		"agents/openai.yaml":    metadata,
+		"SKILL.md":              skill,
+		"guided-search.md":      guided,
+		"all-keyword-search.md": allKeywords,
+	} {
+		for _, fragment := range []string{"显式关键词", "页面默认", "业务角色", "推测"} {
+			if !strings.Contains(content, fragment) {
+				t.Errorf("%s missing hybrid keyword guidance %q", name, fragment)
+			}
+		}
+	}
+
+	keywordRoute := strings.Index(skill, "显式关键词意图")
+	guidedRoute := strings.Index(skill, "推测是人员、部门、交易方、我方主体或自定义字段")
+	fallbackRoute := strings.Index(skill, "其他带搜索词的请求")
+	if keywordRoute < 0 || guidedRoute < 0 || fallbackRoute < 0 ||
+		keywordRoute >= guidedRoute || guidedRoute >= fallbackRoute {
+		t.Fatalf("hybrid routes must be explicit-keyword, guided-inference, then default fallback: keyword=%d guided=%d fallback=%d", keywordRoute, guidedRoute, fallbackRoute)
+	}
+
+	for _, fragment := range []string{
+		"“关键词搜索毛鹏”",
+		"“搜索毛鹏”",
+		"“毛鹏的合同”",
+		"“项目区域为华东”",
+		"“查华东”",
+	} {
+		if !strings.Contains(guided, fragment) {
+			t.Errorf("guided-search.md missing routing example %s", fragment)
+		}
+	}
+
+	if strings.Contains(skill, "| 明确某个人、某个部门、某个交易方或我方主体 |") {
+		t.Error("entity-looking terms must not automatically become exact-object filters")
+	}
+	if strings.Contains(guided, "问：‘华东’是哪个字段的值") ||
+		strings.Contains(guided, "问：“『华东』是哪个字段的值") {
+		t.Error("a value-only search term must fall back to page default keyword search instead of blocking for a field")
+	}
+}
+
 func TestContractSearchSkillSeparatesUserAndAppContracts(t *testing.T) {
 	t.Parallel()
 
-	root := filepath.Join("..", "..", "skills", "contract-cli-contract")
+	root := filepath.Join("..", "..", "skills", "contract-cli-contract-search")
 	skillContent := readTextFile(t, filepath.Join(root, "SKILL.md"))
 
 	references := []struct {
@@ -101,7 +200,7 @@ func TestContractSearchSkillSeparatesUserAndAppContracts(t *testing.T) {
 func TestContractSearchReferencesUseRunnableIdentitySpecificExamples(t *testing.T) {
 	t.Parallel()
 
-	root := filepath.Join("..", "..", "skills", "contract-cli-contract", "references")
+	root := filepath.Join("..", "..", "skills", "contract-cli-contract-search", "references")
 	checks := []struct {
 		file      string
 		required  []string
@@ -151,7 +250,7 @@ func TestContractSearchUserFilterValueContractsMatchCurrentCLIProfile(t *testing
 	t.Parallel()
 
 	content := readTextFile(t, filepath.Join(
-		"..", "..", "skills", "contract-cli-contract", "references", "search-user-parameters.md",
+		"..", "..", "skills", "contract-cli-contract-search", "references", "search-user-parameters.md",
 	))
 
 	required := []string{
@@ -160,7 +259,9 @@ func TestContractSearchUserFilterValueContractsMatchCurrentCLIProfile(t *testing
 		"`CONTRACT_AMOUNT` / `contractAmount` | `array` | 恰好两个元素 `[start,end]`",
 		"`CONTRACT_CURRENCY` / `contractCurrency` | `string` / `integer` / `array`",
 		"`CONTRACT_SEAL_NUMBER` / `contractSealNumber` | `integer` / `array<integer>`",
-		"`CONTRACT_FORM_FIELDS_OPTION` / `contractFormFieldsOption` | `string` / `array<string>`",
+		"`CONTRACT_FORM_FIELDS_OPTION` / `contractFormFieldsOption` | `string` / `array<string>` / `array<integer>`",
+		"OPTION_LABEL_ARRAY",
+		"CURRENCY_ID_ARRAY",
 		"`CONTRACT_FORM_FIELDS_EMPLOYEE_DEPARTMENT_ID` / `contractFormFieldsEmployeeDepartmentId` | `string` / `array<string>`",
 		"JSON integer `0` 或 `1`",
 		"不传 JSON boolean",
@@ -180,6 +281,29 @@ func TestContractSearchUserFilterValueContractsMatchCurrentCLIProfile(t *testing
 	for _, fragment := range forbidden {
 		if strings.Contains(content, fragment) {
 			t.Errorf("search-user-parameters.md contains obsolete filter value contract %q", fragment)
+		}
+	}
+}
+
+func TestContractSearchFieldDiscoveryExplainsMetadataValueContracts(t *testing.T) {
+	t.Parallel()
+
+	content := readTextFile(t, filepath.Join(
+		"..", "..", "skills", "contract-cli-contract-search", "references", "search-filter-fields.md",
+	))
+	for _, fragment := range []string{
+		"data.items[]",
+		"examples[].request_fragment",
+		"语义类型",
+		"OPTION_LABEL_ARRAY",
+		"CURRENCY_ID_ARRAY",
+		"DATETIME_STRING_RANGE",
+		"MILLIS_RANGE_ARRAY",
+		"空候选",
+		"REPLACE_WITH_FILTER_UNIQUE_KEY",
+	} {
+		if !strings.Contains(content, fragment) {
+			t.Errorf("search-filter-fields.md missing metadata conversion contract %q", fragment)
 		}
 	}
 }

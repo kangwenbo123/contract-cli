@@ -7,13 +7,35 @@
 - 当前仅内置 `prod` 环境预设；正式包默认使用 `prod`：`contract-cli config add --env prod --name contract`
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是当前同时支持 `user` 与 `app` 的结构化业务命令
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit/resubmit/patch/delete/print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、`mdm vendor create/update/list-all/query-by-cert`、`mdm legal get --code/create/update`、`mdm fixed-exchange-rate get/update`、`mdm file download`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`
-- `contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 `--as user`，调用人固定来自个人 Token
+- `contract search-fields`、`contract approval comment list/create` 与 `contract approval task list/approve/reject` 仅支持 `--as user`，调用人固定来自个人 Token
 - `app` 目前已经支持登录、状态查看、登出、默认身份切换
 - 推荐使用 `npx skills add qfeius/contract-cli -y -g` 安装跨 Agent 平台 skills；`contract-cli skills install` 保留为 CLI 内置兜底
 - `update check` 支持手动检查 npm 远端版本；默认输出文本，带 `--json` 时返回飞书式 JSON；CLI 会为符合条件的普通命令按 24 小时缓存检查远端版本，并在 JSON object 输出中注入 `_notice.update`
 - `environment inspect` 可以在本地查看当前父进程链对应的客户端来源；所有实际业务 HTTP 请求都会在发送前重新探测并覆盖来源 Header
 - 当前全部已支持命令都可以通过 `--help` 查看本地帮助，例如 `contract-cli --help`、`contract-cli contract search --help`、`contract-cli help contract upload-file`
 - `app` 业务接口后续继续新增时，优先在本文件补充命令矩阵
+
+## 顶层人员与部门查询
+
+两个命令分别由 `contract-cli-employee`、`contract-cli-department` 独立 Skill 指导；只读、仅 user，省略 `--as` 也使用 user。
+
+```bash
+contract-cli employee list --name "张三" --profile contract --as user --output json
+contract-cli department list --name "研发" --profile contract --as user --output json
+contract-cli department list --page-size 20 --profile contract --as user --output json
+```
+
+| 参数/行为 | employee list | department list |
+| --- | --- | --- |
+| 名称 | `--name` 人员姓名关键词 | `--name` 部门名称关键词 |
+| 部门 ID | `--department-id` 与 name 必须二选一 | `--department-id` 与 name 互斥，均省略则查一页 |
+| 分页 | `--page-size` 1–200，默认 10；`--page-token` 原样透传 | 同左 |
+| GET 路径 | `/open-apis/contract/v1/mcp/employees` | `/open-apis/contract/v1/mcp/departments` |
+| ID 契约 | 固定 query `user_id_type=user_id`，返回 `user_id` | 默认开放部门 ID，返回 `department_id` |
+
+`--department-id` 是单个开放部门 ID，映射 `department_collection`；原样使用部门查询返回值，不传内部数字 ID 或多个 ID。可将它传给 `employee list --department-id <department_id>` 查询部门人员。
+
+不支持 JSON 请求体、调用人覆盖或 ID 类型切换。每次只请求一页；`has_more=false` 即停止。候选、状态和未知响应字段原样保留，不自动选择人员/部门；业务失败保留响应并返回非零退出码。精确合同筛选先消歧，再把 ID 字符串数组交给搜索 Skill 对应的申请人/需求人/部门字段。
 
 ## 通用约定
 
@@ -50,6 +72,7 @@ contract-cli contract get <contract-id> --help
 - 为兼容老用户脚本，旧身份值 `--as bot` 仍可使用，运行时等价于 `--as app`；新文档和示例统一使用 `app`
 - `contract ...`、`mdm ...` 结构化命令大多默认只支持 `--as user`
 - `/open-apis/contract/v1/mcp/...` 路径大多仍只支持 `--as user`
+- `contract search-fields` 只支持 user，省略 `--as` 时也默认 user，不跟随 profile 的 app 默认身份。
 - `contract search-v2`、`contract field update`、`contract sign switch-to-paper`、`contract sign-url get`、`contract form attribute list`、`contract authorization grant`、`contract esign *`、`contract submit`、`contract resubmit`、`contract patch`、`contract delete`、`contract print-file`、`contract share get/batch-create`、`contract cooperation link/record/search/file`、`contract approval start`、`payment *`、新增写入和扩展查询型 `mdm *`、`event outbound-ip list` 和 `rule table *` 当前仅支持 `--as app`
 - `contract get`、`contract search`、`contract create`、`contract sync-user-groups`、`contract text`、`contract category list`、`contract template list`、`contract template get`、`contract template instantiate`、`contract upload-file`、`contract download-file`、`contract approval get`、`mdm vendor list`、`mdm vendor get`、`mdm legal list`、`mdm legal get`、`mdm fields list` 是例外：
   - `contract get --as user` 走 MCP 路径 `/open-apis/contract/v1/mcp/contracts/{contract_id}`
@@ -290,7 +313,7 @@ contract-cli skills install --force
 
 执行结果：
 
-- 复制内置 `auth`、`contract-cli-shared`、`contract-cli-contract`、`contract-cli-payment`、`contract-cli-mdm-vendor`、`contract-cli-mdm-legal`、`contract-cli-mdm-fields` 等 skill
+- 复制内置 `auth`、`contract-cli-shared`、`contract-cli-contract-search`、`contract-cli-contract`、`contract-cli-payment`、`contract-cli-mdm-vendor`、`contract-cli-mdm-legal`、`contract-cli-mdm-fields` 等 skill
 - 保留 `SKILL.md`、`agents/openai.yaml` 和 `references/*.md`
 
 ### 2. 鉴权
@@ -446,12 +469,41 @@ contract-cli contract search --profile contract --as app --input-file search.jso
 
 - `--as user`：
   - 走 `/open-apis/contract/v1/mcp/contracts/search`
+  - 固定 `user_id_type=user_id`；显式指定其他类型或空值时，在发送搜索请求前报错。
+  - 非零业务 code、`success=false` 或缺失业务 code 返回失败退出码，并保留响应。
 - `--as app`：
   - 走 `/open-apis/contract/v1/contracts/search`
-- 额外传入 `--user-id-type` / `--user-id` 时，会原样拼到 query string
+  - 保留 `--user-id-type` 透传和原接口响应契约。
+- `--user-id` 会拼到 query string，不替代 user OAuth 身份。
 - 未显式传 `--as` 时：
   - 若 profile 默认身份是 `app`，则会直接走 app 搜索路由
   - 若 profile 默认身份是 `user`，则走 user 搜索路由
+
+自定义字段先用 `contract search-fields --keyword <字段展示名>` 发现；按元数据构造完整条件。JSON 请求保留数字精度，不将数字字符串强制转数值。已验证的组合与限制见 [搜索组合](../skills/contract-cli-contract-search/references/search-combinations.md)。
+
+#### `contract-cli contract search-fields`
+
+用途：查询当前用户可用于合同搜索的基础字段和自定义字段元信息，对应 MCP `list-contract-search-filter-fields`。本次开发版新增，旧 CLI 1.8.6 不支持。
+
+```bash
+contract-cli contract search-fields --keyword "项目区域" --profile contract --as user --output json
+```
+
+支持参数：
+
+- `--keyword`：可选字符串，按字段展示名进行字面量模糊匹配；已知字段名时优先传入。
+- `--profile`、`--as user`、`--output json|yaml|table`、`--raw`：通用上下文和输出参数。
+
+调用规则：
+
+- 走 `GET /open-apis/contract/v1/mcp/contracts/search/filter_fields`，query 只有可选 `keyword`。
+- 仅支持 user OAuth，省略 `--as` 时也默认 user；app 身份在发送请求前拒绝。
+- 仅用户明确要求完整字段清单时省略 `--keyword`；一次返回全部匹配字段，固定中文说明，无分页和语言参数。
+- 不接受 `--data`、`--input-file`、`--user-id-type`、`--lang` 或分页参数。
+- 根据响应中的 `request_location`、`request_paths`、`search_field`、`filter_unique_key`、`search_value_type`、`value_description`、`usage_hint`、`value_scopes` 和 `examples` 构造后续 `contract search --as user` 请求，不能统一放入 `filter_units`。
+- 业务非零 `code` 或 `success=false` 返回非零退出码，保留服务端错误信息；字段无匹配不等于合同无匹配。
+
+此命令不提供人员或部门候选列表；固定申请人姓名、部门名称关键词搜索无需前置调用。完整用法见[搜索字段发现](../skills/contract-cli-contract-search/references/search-filter-fields.md)。
 
 #### `contract-cli contract search-v2`
 

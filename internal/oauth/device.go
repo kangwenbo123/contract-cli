@@ -171,7 +171,7 @@ func RevokeDeviceToken(ctx context.Context, client *http.Client, request DeviceR
 	if err != nil {
 		return fmt.Errorf("perform device revoke request: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }() // Transport/status/decode errors determine the request result.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("device revoke request failed with status %d", response.StatusCode)
 	}
@@ -215,7 +215,7 @@ func postDeviceForm(ctx context.Context, client *http.Client, endpoint string, f
 	if err != nil {
 		return &deviceGrantRequestError{cause: err, requestWritten: requestWritten.Load()}
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }() // Transport/status/decode errors determine the request result.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		var payload struct {
 			Error            string `json:"error"`

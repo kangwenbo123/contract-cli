@@ -83,7 +83,7 @@ contract-cli contract enum list --profile contract --type contract_status
 
 ## 字段参考入口
 
-- 搜索合同请求体：看 [search-contract-fields.md](search-contract-fields.md)
+- 搜索合同请求体与文本搜索：看 [合同搜索 Skill](../../contract-cli-contract-search/SKILL.md)
 - 合同详情和搜索响应：看 [contract-response-fields.md](contract-response-fields.md)
 - 创建合同请求体：先看 [category-fields.md](category-fields.md) 获取 `contract_category_abbreviation`，再看 [create-contract-fields.md](create-contract-fields.md)、[create-contract-field-tree.md](create-contract-field-tree.md)、[create-contract-enums.md](create-contract-enums.md)
 - 更新合同文件/归档字段：看 [patch-contract-fields.md](patch-contract-fields.md)

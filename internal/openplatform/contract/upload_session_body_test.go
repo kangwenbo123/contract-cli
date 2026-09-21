@@ -16,7 +16,7 @@ func (failedUploadSource) Read([]byte) (int, error) { return 0, io.ErrUnexpected
 
 func TestUploadSessionContentBodyPropagatesSourceFailure(t *testing.T) {
 	body, _ := contract.UploadSessionContentBody("file.pdf", failedUploadSource{})
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	if _, err := io.Copy(io.Discard, body); !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Fatalf("lost file read error: %v", err)
 	}

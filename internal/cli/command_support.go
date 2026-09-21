@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strconv"
@@ -315,8 +317,16 @@ func resolveJSONObjectBody(options commandOptions, requireInput bool) (map[strin
 		return map[string]any{}, nil
 	}
 
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
 	var decoded any
-	if err := json.Unmarshal(body, &decoded); err != nil {
+	if err := decoder.Decode(&decoded); err != nil {
+		return nil, fmt.Errorf("decode command input json: %w", err)
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		if err == nil {
+			return nil, fmt.Errorf("decode command input json: input must contain a single JSON object")
+		}
 		return nil, fmt.Errorf("decode command input json: %w", err)
 	}
 	object, ok := decoded.(map[string]any)

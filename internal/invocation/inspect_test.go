@@ -36,13 +36,13 @@ func TestMain(m *testing.M) {
 		time.Sleep(time.Hour)
 		os.Exit(0)
 	case "malformed":
-		fmt.Fprint(os.Stdout, "not-json")
+		_, _ = fmt.Fprint(os.Stdout, "not-json")
 		os.Exit(0)
 	case "empty":
-		fmt.Fprint(os.Stdout, "{}")
+		_, _ = fmt.Fprint(os.Stdout, "{}")
 		os.Exit(0)
 	case "oversized":
-		fmt.Fprint(os.Stdout, strings.Repeat("x", maxInspectionOutput+1))
+		_, _ = fmt.Fprint(os.Stdout, strings.Repeat("x", maxInspectionOutput+1))
 		os.Exit(0)
 	case "failure":
 		os.Exit(7)
@@ -106,7 +106,7 @@ func TestInspectHonorsEarlierDeadlineAndReapsHelper(t *testing.T) {
 		// Wait releases the process handle, so a later Kill returns EINVAL rather
 		// than ErrProcessDone. Do not mistake that released handle for a live helper.
 		err := command.Process.Kill()
-		if !errors.Is(err, os.ErrProcessDone) && !(runtime.GOOS == "windows" && errors.Is(err, syscall.EINVAL)) {
+		if !errors.Is(err, os.ErrProcessDone) && (runtime.GOOS != "windows" || !errors.Is(err, syscall.EINVAL)) {
 			t.Fatalf("helper still alive: %v", err)
 		}
 	}
@@ -175,7 +175,7 @@ func TestInspectionHelperDispatchRejectsBadArguments(t *testing.T) {
 func TestInspectionOutputIsBoundedEvenWhenCopiedFromPipe(t *testing.T) {
 	reader, writer := io.Pipe()
 	go func() { _, _ = writer.Write(bytes.Repeat([]byte{'x'}, maxInspectionOutput+123)); _ = writer.Close() }()
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	var output inspectionOutput
 	if _, err := io.Copy(&output, reader); err != nil {
 		t.Fatal(err)

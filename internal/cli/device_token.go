@@ -58,6 +58,9 @@ func (a *App) deviceAuthStatus(profile config.Profile) (authStatusView, error) {
 		Authorization: "unauthorized",
 		Fields:        []authStatusField{{Label: "Device Client ID", Value: emptyFallback(profile.Identities.User.DeviceClientID, "<not-configured>")}},
 	}
+	if runtimeContext, err := a.resolveDeviceRuntime(); err == nil {
+		view.Fields = append(view.Fields, authStatusField{Label: "Credential Scope", Value: deviceCredentialScope(runtimeContext)})
+	}
 	store, err := a.deviceCredentials()
 	if err != nil {
 		return authStatusView{}, err
@@ -110,6 +113,15 @@ func (a *App) deviceAuthLogout(ctx context.Context, profile config.Profile) (str
 	if err != nil {
 		return "", err
 	}
+	a.logger.Info("Device logout started", "profile", profile.Name)
+	release, acquired, err := a.tryDeviceAuthorizationOperation(profile.Name)
+	if err != nil {
+		return "", err
+	}
+	if !acquired {
+		return "", errors.New("device credential operation is busy; retry logout after the active operation completes")
+	}
+	defer release()
 	stored, err := a.loadProductionDeviceCredential(profile, store)
 	if errors.Is(err, credential.ErrCredentialNotFound) {
 		return fmt.Sprintf("Device authorization is already cleared for profile %q.", profile.Name), nil
@@ -175,6 +187,10 @@ func (a *App) refreshDeviceToken(ctx context.Context, profile config.Profile, ex
 		}
 	}()
 
+	return a.refreshDeviceTokenUnderLock(ctx, profile, expectedAccessToken, force, store)
+}
+
+func (a *App) refreshDeviceTokenUnderLock(ctx context.Context, profile config.Profile, expectedAccessToken string, force bool, store credential.Store) (string, error) {
 	stored, err := a.loadProductionDeviceCredential(profile, store)
 	if err != nil {
 		return "", err
@@ -237,7 +253,7 @@ func (a *App) deviceAuthorizationLock(profileName string) (*flock.Flock, error) 
 }
 
 func (a *App) deviceCredentialOperationLock(profileName string) (*flock.Flock, error) {
-	runtimeContext, err := credential.ResolveDeviceRuntime(a.lookupEnv)
+	runtimeContext, err := a.resolveDeviceRuntime()
 	if err != nil {
 		return nil, err
 	}
@@ -250,6 +266,13 @@ func (a *App) deviceCredentialOperationLock(profileName string) (*flock.Flock, e
 	case credential.DeviceRuntimeDoubaoWorkTask:
 		baseDir = filepath.Join(runtimeContext.DataDir, "locks")
 		namespace = runtimeContext.SessionNamespace + ":" + namespace
+	case credential.DeviceRuntimeLocalUser:
+		directory, err := a.localDeviceDirectory()
+		if err != nil {
+			return nil, err
+		}
+		baseDir = filepath.Join(directory, "locks")
+		namespace = "local-user-v1:" + profileName
 	case credential.DeviceRuntimeWorkBuddy:
 		cacheDir, err := os.UserCacheDir()
 		if err != nil {
