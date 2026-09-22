@@ -1,6 +1,6 @@
 ---
 name: contract-cli-mdm-vendor
-version: 1.1.1
+version: 1.1.3
 description: "contract-cli 交易方主数据技能：支持 user/app 身份查询交易方，按身份创建或局部更新交易方，使用 user 身份启停交易方，以及 app 身份执行旧版全量更新、全量分页和证件查询。当用户要使用 `contract-cli mdm vendor ...` 操作交易方时触发。"
 ---
 
@@ -28,7 +28,7 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 快速决策
 
-- 查询候选或详情：使用 `list|get`，二者都支持 `user` 与 `app`。
+- 查询候选或详情：使用 `list|get`，二者都支持 `user` 与 `app`。user 身份只支持交易方名称模糊查询，app 身份按交易方编码查询；详情始终使用内部交易方 ID。
 - 创建交易方：使用 `create`。个人聊天场景用 `--as user`；开放平台应用场景用 `--as app --user-id <operator-user-id>`。
 - 只改提交的字段：使用 `patch`。不要用旧 `update` 模拟局部更新。
 - 启用或停用：个人聊天场景使用 `enable|disable --as user`，不要用个人 PATCH 改 `status`。
@@ -38,9 +38,9 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 
 ## 自然语言场景决策
 
-- 简单创建：字段明确且已满足当前租户必填规则时，使用 `create`，只提交用户确认的字段。
-- 复杂创建：包含自定义字段、联系人、地址、账户、公司视图、附件或部门时，先查字段配置和相关 ID，再组织一次创建请求。
-- 普通字段 PATCH：先用 `list` 定位交易方，确认唯一目标后用 `patch` 只提交需要修改的字段。
+- 简单创建：字段明确且已满足当前租户 module 0 的全局必填规则时，使用 `create`，只提交用户确认的字段。
+- 复杂创建：用户明确要求包含自定义字段、联系人、地址、账户、公司视图、附件或部门时，先查字段配置和相关 ID，再组织一次创建请求；不要因为子项内部存在必填字段而主动添加该子项。
+- 普通字段 PATCH：个人身份先用 `list` 按名称定位交易方，确认唯一目标后用 `patch` 只提交需要修改的字段。用户只提供编码时，不得把个人查询空结果解释为不存在，也不得据此重复创建；应询问名称或内部交易方 ID，不自动切换 App 身份。
 - 子项增改删：先用 `get` 获取联系人、账户、地址或公司视图的现有 ID；有 ID 修改、无 ID 新增、`id + _delete:true` 删除，未列出的子项保留。
 - 附件替换：只接受用户从 MDM 页面取得的已有 `fileId`；不传 `appendix` 保持不变，传 `[]` 删除全部附件引用，传 fileId 列表整体替换。
 - 部门查询后写入：只允许选择 `status=1` 的启用部门；`status=0` 的停用部门不得用于创建或修改。部门查询返回 `od-...` 时使用 `--department-id-type open_department_id`；内部数字 ID 省略该参数或传 `department_id`。
@@ -48,6 +48,16 @@ CRITICAL — 开始前 MUST 先读取 [../contract-cli-shared/SKILL.md](../contr
 - 结果未知后的查询确认：返回 `UNKNOWN` 或网络中断导致结果不确定时，用 `get` 核对最终状态，不重复发起写请求。
 
 复杂写入遵循固定顺序：字段不确定时先查询字段配置；子项 ID 不确定时先查询交易方详情；存在歧义时先询问用户，不猜字段值、目标记录或删除范围。
+
+## 动态字段配置解释
+
+- module 0 是始终存在的交易方主对象；当前租户在 module 0 配置的必填字段属于全局必填。创建时只询问仍缺失的全局必填字段。
+- module 1～4 分别对应经营地址、联系人、银行账户和公司视图。子项集合本身可选；只有用户明确要求提交某类子项时，才检查该子项每条记录内部的必填字段。
+- module 5 是智书合同签约信息，不属于交易方创建请求或 PATCH 请求；即使字段配置返回该模块，也不得要求用户补充或写入请求。
+- 不得推荐或生成默认业务值。国家、交易方性质、地址、联系人、银行账户、公司代码等缺失时，应询问用户或展示合法候选值，不得代替用户选择。
+- 静态参数表中的 App V1 必填标记不能覆盖个人接口的租户动态配置。完整解释规则见 [../contract-cli-mdm-fields/references/vendor-field-config-semantics.md](../contract-cli-mdm-fields/references/vendor-field-config-semantics.md)。
+- 主对象和四类子项的 `extendInfo` 必须按同一参考文档映射值属性：0/1/3/5 用 `fieldValue`，2 用 `num`，4/6 用 `options`，7 用 `date`，8 用 `rangeDate`，12 用 `appendix`，14 用 `employee`。每个自定义字段只提交一个对应值属性。
+- 日期区间是由开始、结束两个日期组成的复合值：设置或更新时传两个 `yyyy-MM-dd` 字符串，清空时传 `rangeDate: null`，不修改时不提交对应 `fieldCode`；`rangeDate: []` 非法。多选、附件和人员字段仍使用空数组请求清空。
 
 ## 身份与路由
 
@@ -80,6 +90,7 @@ app 身份执行 `create/update/patch` 必须传 `--user-id`。user 身份的操
 
 - 交易方 ID 只放在 path，body 不允许出现 `id`。
 - 未传字段不修改，`null` 请求清空；有值则更新。最终结果仍须通过字段类型、必填和动态配置校验。
+- 自定义日期区间清空必须提交对应 `fieldCode` 和 `rangeDate: null`；不要用空数组表示清空。
 - 联系人、账户、地址、公司视图按 ID 修改；无 ID 表示新增；删除必须携带现有 ID 和 `_delete: true`；未列出的记录保留。
 - `extendInfo` 按 `fieldCode` 合并。附件、人员、部门、多选字段一旦出现就整体替换；未出现则保持不变。
 - App PATCH 覆盖旧 V1 PUT 实际允许修改的字段，包括 `status`。
