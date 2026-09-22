@@ -1532,7 +1532,7 @@ func addMDMHelp(registry map[string]helpTopic) {
 		Name:    "mdm vendor list",
 		Summary: "查询交易方列表。",
 		Usage:   []string{"contract-cli mdm vendor list [flags]"},
-		Flags:   concatHelpFlags(openPlatformCommonFlags(), listQueryFlags()),
+		Flags:   concatHelpFlags(openPlatformCommonFlags(), vendorListQueryFlags()),
 		Examples: []string{
 			"contract-cli mdm vendor list --profile contract --name 供应商 --page-size 10",
 			"contract-cli mdm vendor list --profile contract --as app --name V00000001 --user-id-type employee_id",
@@ -1972,6 +1972,12 @@ func eventOutboundIPPageFlags() []helpFlag {
 func listQueryFlags() []helpFlag {
 	return concatHelpFlags([]helpFlag{
 		{"--name <name>", "名称或编码查询条件"},
+	}, pageFlags())
+}
+
+func vendorListQueryFlags() []helpFlag {
+	return concatHelpFlags([]helpFlag{
+		{"--name <name>", "user 身份按名称模糊查询；app 身份按交易方编码查询"},
 	}, pageFlags())
 }
 

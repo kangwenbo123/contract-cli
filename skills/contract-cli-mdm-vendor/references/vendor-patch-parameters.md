@@ -7,6 +7,7 @@
 - 身份：`app` 或 `user`
 - 请求体：JSON object 必填，`--input-file` 与 `--data` 二选一
 - 官方 OpenAPI：本次新增 V1 交易方局部更新接口；V2 不在本期范围
+- 动态必填和自定义字段值属性统一按 [交易方字段配置解释规则](../../contract-cli-mdm-fields/references/vendor-field-config-semantics.md) 处理。
 
 ## 目录
 
@@ -57,12 +58,41 @@ PATCH 复用旧 V1 PUT 的字段名称和类型，完整字段定义见 [vendor-
 - `0`、`false` 和空数组都是已传值，不得按“未传”处理。
 - 四类子项未列出的记录保留；要删除必须显式传现有 ID 和 `_delete: true`。
 - 子项字段为 `null` 时拒绝；`[]` 表示零条子项操作，不会删除现有记录。
+- 自定义日期区间 `rangeDate` 非空时必须恰好包含开始、结束两个 `yyyy-MM-dd` 字符串；清空时传 `null`，`rangeDate: []` 非法。多选、附件和人员值仍使用 `[]` 请求清空。
 - 个人 PATCH 不允许编码、状态、风险和系统字段；可编辑停用交易方，更新后仍停用。
 - 个人 PATCH 不允许传 `vendorAccounts[].bankId`；不要为了写入该字段切换为 App 身份。
 - 写入不发起审批，但个人请求与既有在途审批冲突时会失败。
 - 返回 `APPLIED` 表示生效，`NO_CHANGE` 表示业务值未变化；`UNKNOWN` 时先查询，不直接重试。
 
 ## 示例
+
+自定义日期区间设置、清空和不修改：
+
+```json
+{
+  "extendInfo": [
+    {
+      "fieldCode": "VBI00110005",
+      "fieldType": 8,
+      "rangeDate": ["2026-09-22", "2027-09-22"]
+    }
+  ]
+}
+```
+
+```json
+{
+  "extendInfo": [
+    {
+      "fieldCode": "VBI00110005",
+      "fieldType": 8,
+      "rangeDate": null
+    }
+  ]
+}
+```
+
+不修改日期区间时，不提交该 `fieldCode`。`rangeDate: []` 是非法日期区间，不能用于清空。
 
 个人修改简称、清空电话并更新一个联系人：
 
